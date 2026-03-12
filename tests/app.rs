@@ -10,7 +10,7 @@
 //! They use axum's test utilities via `tower::ServiceExt` to make requests
 //! against the router without starting a real server.
 //!
-//! Database tests require a test PostgreSQL database. Set DATABASE_URL to
+//! Database tests require a test `PostgreSQL` database. Set `DATABASE_URL` to
 //! a test database before running.
 
 // -- Home / Redirect --
