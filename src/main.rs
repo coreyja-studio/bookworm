@@ -209,12 +209,19 @@ async fn log_read(State(state): State<AppState>, Form(input): Form<LogReadInput>
 
     match book {
         Ok(book_id) => {
-            let _ = sqlx::query!("INSERT INTO reads (book_id) VALUES ($1)", book_id)
+            if let Err(e) = sqlx::query!("INSERT INTO reads (book_id) VALUES ($1)", book_id)
                 .execute(&state.db)
-                .await;
+                .await
+            {
+                tracing::error!("Failed to insert read: {e}");
+                return Redirect::to("/log");
+            }
             Redirect::to("/log?logged=true")
         }
-        Err(_) => Redirect::to("/log"),
+        Err(e) => {
+            tracing::error!("Failed to upsert book: {e}");
+            Redirect::to("/log")
+        }
     }
 }
 
@@ -239,7 +246,10 @@ async fn history(State(state): State<AppState>, Query(params): Query<HistoryPara
     )
     .fetch_all(&state.db)
     .await
-    .unwrap_or_default();
+    .unwrap_or_else(|e| {
+        tracing::error!("Failed to fetch reading history: {e}");
+        Vec::new()
+    });
 
     let has_next = rows.len() == 50;
     let has_prev = page > 0;
@@ -281,20 +291,29 @@ async fn stats(State(state): State<AppState>) -> Markup {
     let total_reads: i64 = sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!" FROM reads"#)
         .fetch_one(&state.db)
         .await
-        .unwrap_or(0);
+        .unwrap_or_else(|e| {
+            tracing::error!("Failed to fetch total reads: {e}");
+            0
+        });
 
     let unique_books: i64 =
         sqlx::query_scalar!(r#"SELECT COUNT(DISTINCT book_id) as "count!" FROM reads"#)
             .fetch_one(&state.db)
             .await
-            .unwrap_or(0);
+            .unwrap_or_else(|e| {
+                tracing::error!("Failed to fetch unique books: {e}");
+                0
+            });
 
     let reads_this_week: i64 = sqlx::query_scalar!(
         r#"SELECT COUNT(*) as "count!" FROM reads WHERE read_date >= CURRENT_DATE - INTERVAL '7 days'"#
     )
     .fetch_one(&state.db)
     .await
-    .unwrap_or(0);
+    .unwrap_or_else(|e| {
+        tracing::error!("Failed to fetch reads this week: {e}");
+        0
+    });
 
     let progress = std::cmp::min((unique_books * 100) / 1_000, 100);
 
