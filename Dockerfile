@@ -1,3 +1,15 @@
+FROM node:22-slim AS ts-builder
+
+RUN corepack enable
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY ts ./ts
+RUN pnpm run build
+
 FROM rust:1.93 AS builder
 
 WORKDIR /app
@@ -5,7 +17,7 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY .sqlx ./.sqlx
 COPY src ./src
-COPY ts/dist ./ts/dist
+COPY --from=ts-builder /app/ts/dist ./ts/dist
 COPY migrations ./migrations
 
 ENV SQLX_OFFLINE=true

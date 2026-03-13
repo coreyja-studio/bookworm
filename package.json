@@ -1,5 +1,6 @@
 {
   "private": true,
+  "packageManager": "pnpm@9.15.0",
   "scripts": {
     "build": "node ts/build.mjs",
     "typecheck": "tsc --noEmit",
