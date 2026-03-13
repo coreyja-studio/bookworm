@@ -157,7 +157,6 @@ struct ReadEntry {
 
 struct FaveBook {
     title: String,
-    #[allow(dead_code)]
     author: String,
     read_count: i64,
 }
@@ -460,13 +459,13 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
 
         div class="flex justify-between mt-6" {
             @if has_prev {
-                @let prev_q = params.q.as_deref().map_or(String::new(), |q| format!("&q={q}"));
+                @let prev_q = params.q.as_deref().map_or(String::new(), |q| format!("&q={}", urlencoding::encode(q)));
                 a href=(format!("/library?page={}{}", page - 1, prev_q)) class="text-accent-orange font-bold" { "← Previous" }
             } @else {
                 span {}
             }
             @if has_next {
-                @let next_q = params.q.as_deref().map_or(String::new(), |q| format!("&q={q}"));
+                @let next_q = params.q.as_deref().map_or(String::new(), |q| format!("&q={}", urlencoding::encode(q)));
                 a href=(format!("/library?page={}{}", page + 1, next_q)) class="text-accent-orange font-bold" { "Next →" }
             }
         }
@@ -750,6 +749,9 @@ async fn stats(State(state): State<AppState>) -> Markup {
             h3 class="font-heading text-lg font-bold mb-2" { "Amelia's Fave ❤️" }
             @if let Some(fave) = &fave_book {
                 div class="font-bold" { (fave.title) }
+                @if !fave.author.is_empty() {
+                    div class="text-subtext text-sm" { "by " (fave.author) }
+                }
                 div class="text-subtext text-sm" { "❤️ Read " (fave.read_count) " times" }
             } @else {
                 div class="text-subtext" { "Start reading to find a favorite!" }
@@ -1049,7 +1051,11 @@ fn nav_header(active_tab: &str, total_reads: i64, unique_books: i64) -> Markup {
                 }
                 div class="flex justify-between text-sm text-subtext mt-2" {
                     span { (total_reads) " reads" }
-                    span { (1000 - unique_books) " to go!" }
+                    @if unique_books >= 1000 {
+                        span { "Goal reached! 🎉" }
+                    } @else {
+                        span { (1000 - unique_books) " to go!" }
+                    }
                 }
                 div class="bg-accent-bg-orange rounded-full h-3 mt-1 overflow-hidden" {
                     div class="h-full rounded-full" style=(format!("width: {pct}%; background: linear-gradient(to right, #FF6B6B, #FFa040, #FFD036, #5CD08E, #50B4F0, #A882F0)")) {}
