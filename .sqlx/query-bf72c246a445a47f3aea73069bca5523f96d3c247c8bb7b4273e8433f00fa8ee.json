@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT b.title, b.author, r.read_date, b.cover_url as \"cover_url?\"\n           FROM reads r\n           JOIN books b ON b.book_id = r.book_id\n           ORDER BY r.read_date DESC, r.created_at DESC\n           LIMIT 50 OFFSET $1",
+  "query": "SELECT b.title, b.author, r.read_date, b.cover_url as \"cover_url?\"\n           FROM reads r JOIN books b ON b.book_id = r.book_id\n           WHERE r.deleted_at IS NULL\n           ORDER BY r.created_at DESC LIMIT 3",
   "describe": {
     "columns": [
       {
@@ -25,9 +25,7 @@
       }
     ],
     "parameters": {
-      "Left": [
-        "Int8"
-      ]
+      "Left": []
     },
     "nullable": [
       false,
@@ -36,5 +34,5 @@
       true
     ]
   },
-  "hash": "83f6b0b9e4510c49d5c37c7a6f3ea7764d474a8fd77e3c9b7459f4e7f851085c"
+  "hash": "bf72c246a445a47f3aea73069bca5523f96d3c247c8bb7b4273e8433f00fa8ee"
 }
