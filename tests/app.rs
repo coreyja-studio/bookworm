@@ -224,3 +224,247 @@ fn multiple_reads_same_book_same_day_are_separate_events() {
          assert 2 read rows exist for that book"
     )
 }
+
+// =============================================================================
+// BW-003a16ad28ef4083: Barcode Scanning for Book Input
+// =============================================================================
+//
+// These tests define the expected behavior for:
+//   - ISBN validation at GET /api/isbn/{isbn}
+//   - Open Library lookup returning book data
+//   - Storing isbn + cover_url when logging a read via POST /log
+//   - Log form containing scan button, modal, and CDN script
+//
+// Tests that require network access (e.g. Open Library API) remain #[ignore].
+// Local tests run in CI against a test database.
+
+/// Build an axum Router wired to the test database.
+///
+/// Implementation agent: this crate is currently a `[[bin]]` with no `[lib]` target,
+/// so integration tests cannot call `bookworm::*` functions directly.
+///
+/// To enable these tests you must:
+///   1. Add a `[lib]` target to `Cargo.toml` (e.g. `path = "src/lib.rs"`) and expose
+///      `pub use` for `setup_db_pool`, `AppState`, and `routes`.
+///   2. Add `pub fn for_testing(db: sqlx::PgPool) -> Self` to `AppState`.
+///   3. Replace the `todo!()` below with:
+///      ```rust
+///      let db = bookworm::setup_db_pool().await.unwrap();
+///      let state = bookworm::AppState::for_testing(db);
+///      bookworm::routes(state)
+///      ```
+async fn make_test_router() -> axum::Router {
+    let db = bookworm::setup_db_pool().await.unwrap();
+    let state = bookworm::AppState::for_testing(db);
+    bookworm::routes(state)
+}
+
+async fn make_test_db() -> sqlx::PgPool {
+    bookworm::setup_db_pool().await.unwrap()
+}
+
+// -- ISBN endpoint: input validation --
+
+#[tokio::test]
+async fn isbn_lookup_rejects_invalid_isbn() {
+    // GET /api/isbn/abc should return 400 Bad Request.
+    // "abc" contains non-digit characters and is not a valid ISBN.
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    let app = make_test_router().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/isbn/abc")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "Non-numeric ISBN 'abc' should return 400 Bad Request"
+    );
+}
+
+#[tokio::test]
+async fn isbn_lookup_rejects_wrong_length() {
+    // GET /api/isbn/12345 should return 400 Bad Request.
+    // Valid ISBNs are exactly 10 or 13 digits; 5 digits is invalid.
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    let app = make_test_router().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/isbn/12345")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::BAD_REQUEST,
+        "5-digit string '12345' should return 400 Bad Request (must be 10 or 13 digits)"
+    );
+}
+
+// -- ISBN endpoint: successful lookup (requires live network) --
+
+#[tokio::test]
+#[ignore = "Requires AppState::for_testing(), /api/isbn/{isbn} route, and live openlibrary.org network access"]
+async fn isbn_lookup_returns_book_data() {
+    // GET /api/isbn/9780064430173 should return 200 with JSON containing
+    // "Goodnight Moon" — a well-known children's book with a stable Open Library record.
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let app = make_test_router().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/isbn/9780064430173")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Known ISBN 9780064430173 should return 200 OK from Open Library"
+    );
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let body_str = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    assert!(
+        body_str.contains("Goodnight Moon"),
+        "Response JSON should contain the title 'Goodnight Moon', got: {body_str}"
+    );
+    assert!(
+        body_str.contains("9780064430173"),
+        "Response JSON should echo back the isbn field, got: {body_str}"
+    );
+}
+
+// -- Log form: scanner UI elements --
+
+#[tokio::test]
+async fn scan_form_contains_scanner_elements() {
+    // GET /log should include the scan button, the scanner modal, and the
+    // html5-qrcode CDN <script> tag so the camera scanner is available.
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let app = make_test_router().await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/log")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    assert!(
+        html.contains("scan-btn"),
+        "Log form should contain an element with id='scan-btn'"
+    );
+    assert!(
+        html.contains("scanner-modal"),
+        "Log form should contain the scanner modal with id='scanner-modal'"
+    );
+    assert!(
+        html.contains("html5-qrcode"),
+        "Log form should include the html5-qrcode library (CDN <script> tag)"
+    );
+}
+
+// -- Log endpoint: isbn and cover_url stored in DB --
+
+#[tokio::test]
+async fn log_read_with_isbn_stores_isbn() {
+    // POST /log with isbn and cover_url form fields should store both in
+    // the books table. The current handler ignores unknown fields (Axum default),
+    // so this test will fail until LogReadInput and the SQL upsert are updated.
+    use axum::http::{Request, StatusCode};
+    use sqlx::Row;
+    use tower::ServiceExt;
+
+    let app = make_test_router().await;
+    let db = make_test_db().await;
+
+    // Clean up any prior test data
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Test ISBN Book")
+        .execute(&db)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM books WHERE title = $1")
+        .bind("Test ISBN Book")
+        .execute(&db)
+        .await
+        .ok();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/log")
+                .header("content-type", "application/x-www-form-urlencoded")
+                .body(axum::body::Body::from(
+                    "title=Test+ISBN+Book&author=Test+Author&isbn=9780064430173&cover_url=https%3A%2F%2Fcovers.openlibrary.org%2Fb%2Fisbn%2F9780064430173-M.jpg"
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::SEE_OTHER,
+        "POST /log with isbn should redirect on success (not 422 or 500)"
+    );
+
+    // Verify isbn was stored — uses runtime sqlx (no macro) since the column
+    // doesn't exist yet at compile time
+    let row = sqlx::query("SELECT isbn, cover_url FROM books WHERE title = $1 AND author = $2")
+        .bind("Test ISBN Book")
+        .bind("Test Author")
+        .fetch_one(&db)
+        .await
+        .expect("Book should exist in DB after logging with isbn");
+
+    let stored_isbn: Option<String> = row.try_get("isbn").unwrap_or(None);
+    assert_eq!(
+        stored_isbn.as_deref(),
+        Some("9780064430173"),
+        "isbn should be stored in the books table"
+    );
+
+    let stored_cover: Option<String> = row.try_get("cover_url").unwrap_or(None);
+    assert!(
+        stored_cover.is_some(),
+        "cover_url should be stored in the books table"
+    );
+}

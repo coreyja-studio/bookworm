@@ -1,0 +1,20 @@
+{
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "build": "node ts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ts/",
+    "format:check": "prettier --check ts/",
+    "format": "prettier --write ts/"
+  },
+  "devDependencies": {
+    "oxc-transform": "^0.56",
+    "typescript": "^5.7",
+    "eslint": "^9",
+    "@eslint/js": "^9",
+    "typescript-eslint": "^8",
+    "prettier": "^3",
+    "html5-qrcode": "^2.3.8"
+  }
+}

@@ -16,9 +16,12 @@ jobs:
   rust-checks:
     uses: ./.github/workflows/_rust-checks.yml
 
+  ts-checks:
+    uses: ./.github/workflows/_ts-checks.yml
+
   ready:
     if: always()
-    needs: [fmt, rust-checks]
+    needs: [fmt, rust-checks, ts-checks]
     runs-on: ubuntu-latest
     steps:
       - name: Check results
