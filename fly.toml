@@ -1,4 +1,4 @@
-app = 'bookworm'
+app = 'bookworm-coreyja'
 primary_region = 'ewr'
 
 [build]
