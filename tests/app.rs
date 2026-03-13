@@ -235,16 +235,8 @@ fn multiple_reads_same_book_same_day_are_separate_events() {
 //   - Storing isbn + cover_url when logging a read via POST /log
 //   - Log form containing scan button, modal, and CDN script
 //
-// All tests are #[ignore] because they require:
-//   1. `AppState::for_testing(db: sqlx::PgPool) -> Self` to be added (fields
-//      are currently private with no public test constructor)
-//   2. The `/api/isbn/{isbn}` route to be implemented
-//   3. Migration adding `isbn` and `cover_url` columns to the `books` table
-//   4. `ts/dist/scanner.js` to exist (compiled from `ts/scanner.ts`) so
-//      `include_str!("../ts/dist/scanner.js")` compiles
-//
-// Implementation agent: after completing the above, replace `todo!()` in
-// `make_test_router()` below with the real construction, then un-ignore.
+// Tests that require network access (e.g. Open Library API) remain #[ignore].
+// Local tests run in CI against a test database.
 
 /// Build an axum Router wired to the test database.
 ///
@@ -274,7 +266,6 @@ async fn make_test_db() -> sqlx::PgPool {
 // -- ISBN endpoint: input validation --
 
 #[tokio::test]
-#[ignore = "Requires AppState::for_testing() and /api/isbn/{isbn} route (plan steps 7-8)"]
 async fn isbn_lookup_rejects_invalid_isbn() {
     // GET /api/isbn/abc should return 400 Bad Request.
     // "abc" contains non-digit characters and is not a valid ISBN.
@@ -301,7 +292,6 @@ async fn isbn_lookup_rejects_invalid_isbn() {
 }
 
 #[tokio::test]
-#[ignore = "Requires AppState::for_testing() and /api/isbn/{isbn} route (plan steps 7-8)"]
 async fn isbn_lookup_rejects_wrong_length() {
     // GET /api/isbn/12345 should return 400 Bad Request.
     // Valid ISBNs are exactly 10 or 13 digits; 5 digits is invalid.
@@ -372,7 +362,6 @@ async fn isbn_lookup_returns_book_data() {
 // -- Log form: scanner UI elements --
 
 #[tokio::test]
-#[ignore = "Requires AppState::for_testing() and scan UI added to log_form (ts/dist/scanner.js must exist, plan steps 10-11)"]
 async fn scan_form_contains_scanner_elements() {
     // GET /log should include the scan button, the scanner modal, and the
     // html5-qrcode CDN <script> tag so the camera scanner is available.
@@ -414,7 +403,6 @@ async fn scan_form_contains_scanner_elements() {
 // -- Log endpoint: isbn and cover_url stored in DB --
 
 #[tokio::test]
-#[ignore = "Requires AppState::for_testing(), isbn/cover_url DB columns (plan step 1), and updated log_read handler (plan step 9)"]
 async fn log_read_with_isbn_stores_isbn() {
     // POST /log with isbn and cover_url form fields should store both in
     // the books table. The current handler ignores unknown fields (Axum default),

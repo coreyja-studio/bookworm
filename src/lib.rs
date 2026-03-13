@@ -183,7 +183,7 @@ async fn log_form(Query(params): Query<HashMap<String, String>>) -> Markup {
                 }
             }
         }
-        script { (PreEscaped(include_str!("../ts/dist/scanner.js"))) }
+        script type="module" { (PreEscaped(include_str!("../ts/dist/scanner.js"))) }
     };
     layout("Log a Read", &content)
 }
