@@ -1,0 +1,13 @@
+app = 'bookworm-coreyja'
+primary_region = 'ewr'
+
+[build]
+
+[mounts]
+  source = 'bookworm_data'
+  destination = '/data'
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1

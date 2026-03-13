@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    uses: ./.github/workflows/_fmt.yml
+
+  rust-checks:
+    uses: ./.github/workflows/_rust-checks.yml
+
+  ready:
+    if: always()
+    needs: [fmt, rust-checks]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check results
+        run: |
+          results="${{ join(needs.*.result, ' ') }}"
+          for result in $results; do
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "Job result: $result (expected success or skipped)"
+              exit 1
+            fi
+          done
+
+  deploy:
+    if: always() && needs.ready.result == 'success' && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [ready]
+    uses: ./.github/workflows/_deploy.yml
+    secrets: inherit
