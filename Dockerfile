@@ -5,6 +5,7 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY .sqlx ./.sqlx
 COPY src ./src
+COPY ts/dist ./ts/dist
 COPY migrations ./migrations
 
 ENV SQLX_OFFLINE=true

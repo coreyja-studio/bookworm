@@ -262,17 +262,13 @@ fn multiple_reads_same_book_same_day_are_separate_events() {
 ///      bookworm::routes(state)
 ///      ```
 async fn make_test_router() -> axum::Router {
-    todo!("Requires [lib] target + AppState::for_testing(db) — see plan step 7")
+    let db = bookworm::setup_db_pool().await.unwrap();
+    let state = bookworm::AppState::for_testing(db);
+    bookworm::routes(state)
 }
 
-/// Build a raw DB pool for direct verification queries in tests.
-///
-/// Implementation agent: replace `todo!()` with:
-/// ```rust
-/// bookworm::setup_db_pool().await.unwrap()
-/// ```
 async fn make_test_db() -> sqlx::PgPool {
-    todo!("Requires [lib] target exposing setup_db_pool — see plan step 7")
+    bookworm::setup_db_pool().await.unwrap()
 }
 
 // -- ISBN endpoint: input validation --
@@ -360,12 +356,7 @@ async fn isbn_lookup_returns_book_data() {
         "Known ISBN 9780064430173 should return 200 OK from Open Library"
     );
 
-    let body = response
-        .into_body()
-        .collect()
-        .await
-        .unwrap()
-        .to_bytes();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
     let body_str = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
 
     assert!(
@@ -403,12 +394,7 @@ async fn scan_form_contains_scanner_elements() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body = response
-        .into_body()
-        .collect()
-        .await
-        .unwrap()
-        .to_bytes();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
 
     assert!(
@@ -474,14 +460,12 @@ async fn log_read_with_isbn_stores_isbn() {
 
     // Verify isbn was stored — uses runtime sqlx (no macro) since the column
     // doesn't exist yet at compile time
-    let row = sqlx::query(
-        "SELECT isbn, cover_url FROM books WHERE title = $1 AND author = $2",
-    )
-    .bind("Test ISBN Book")
-    .bind("Test Author")
-    .fetch_one(&db)
-    .await
-    .expect("Book should exist in DB after logging with isbn");
+    let row = sqlx::query("SELECT isbn, cover_url FROM books WHERE title = $1 AND author = $2")
+        .bind("Test ISBN Book")
+        .bind("Test Author")
+        .fetch_one(&db)
+        .await
+        .expect("Book should exist in DB after logging with isbn");
 
     let stored_isbn: Option<String> = row.try_get("isbn").unwrap_or(None);
     assert_eq!(

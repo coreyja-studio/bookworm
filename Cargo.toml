@@ -3,6 +3,10 @@ name = "bookworm"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "bookworm"
+path = "src/lib.rs"
+
 [[bin]]
 name = "bookworm"
 path = "src/main.rs"
@@ -34,6 +38,8 @@ sqlx = { version = "0.8", features = [
 ] }
 
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", default-features = false, features = ["serde"] }
 color-eyre = "0.6"
