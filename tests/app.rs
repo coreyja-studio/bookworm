@@ -538,12 +538,14 @@ async fn library_search_filters_results() {
     let db = make_test_db().await;
 
     // Insert two books with distinct titles
-    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title IN ($1, $2))")
-        .bind("Alpha Search Book")
-        .bind("Beta Other Book")
-        .execute(&db)
-        .await
-        .ok();
+    sqlx::query(
+        "DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title IN ($1, $2))",
+    )
+    .bind("Alpha Search Book")
+    .bind("Beta Other Book")
+    .execute(&db)
+    .await
+    .ok();
     sqlx::query("DELETE FROM books WHERE title IN ($1, $2)")
         .bind("Alpha Search Book")
         .bind("Beta Other Book")
@@ -794,12 +796,11 @@ async fn library_reread_creates_read() {
         .await
         .unwrap();
 
-    let before_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM reads WHERE book_id = $1")
-            .bind(book_id)
-            .fetch_one(&db)
-            .await
-            .unwrap();
+    let before_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM reads WHERE book_id = $1")
+        .bind(book_id)
+        .fetch_one(&db)
+        .await
+        .unwrap();
 
     let response = app
         .oneshot(
@@ -884,13 +885,12 @@ async fn library_delete_soft_deletes() {
     );
 
     // Rows should exist but have deleted_at set (uses runtime sqlx — column may not exist yet)
-    let active_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM reads WHERE book_id = $1 AND deleted_at IS NULL",
-    )
-    .bind(book_id)
-    .fetch_one(&db)
-    .await
-    .unwrap_or(0);
+    let active_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM reads WHERE book_id = $1 AND deleted_at IS NULL")
+            .bind(book_id)
+            .fetch_one(&db)
+            .await
+            .unwrap_or(0);
 
     assert_eq!(
         active_count, 0,
@@ -909,13 +909,11 @@ async fn soft_deleted_reads_excluded_from_stats() {
     let db = make_test_db().await;
 
     // Insert a book with a read, then soft-delete the read
-    sqlx::query(
-        "DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)",
-    )
-    .bind("Deleted Stats Book")
-    .execute(&db)
-    .await
-    .ok();
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Deleted Stats Book")
+        .execute(&db)
+        .await
+        .ok();
     sqlx::query("DELETE FROM books WHERE title = $1")
         .bind("Deleted Stats Book")
         .execute(&db)
@@ -928,13 +926,12 @@ async fn soft_deleted_reads_excluded_from_stats() {
     .fetch_one(&db)
     .await
     .unwrap();
-    let read_id: uuid::Uuid = sqlx::query_scalar(
-        "INSERT INTO reads (book_id) VALUES ($1) RETURNING read_id",
-    )
-    .bind(book_id)
-    .fetch_one(&db)
-    .await
-    .unwrap();
+    let read_id: uuid::Uuid =
+        sqlx::query_scalar("INSERT INTO reads (book_id) VALUES ($1) RETURNING read_id")
+            .bind(book_id)
+            .fetch_one(&db)
+            .await
+            .unwrap();
 
     // Soft-delete the read (the column may not exist yet — if so, the test will
     // fail with a DB error, which is expected during the scaffold phase)
@@ -1117,7 +1114,9 @@ async fn stats_shows_favorite_book_section() {
 
     // Stats should have a section for Amelia's favorite book
     assert!(
-        html.to_lowercase().contains("fav") || html.contains("❤️") || html.to_lowercase().contains("most"),
+        html.to_lowercase().contains("fav")
+            || html.contains("❤️")
+            || html.to_lowercase().contains("most"),
         "Stats page should include a favorite book section"
     );
 }
@@ -1132,13 +1131,11 @@ async fn library_shows_reread_badge_for_multiple_reads() {
 
     let db = make_test_db().await;
 
-    sqlx::query(
-        "DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)",
-    )
-    .bind("Multi Read Badge Book")
-    .execute(&db)
-    .await
-    .ok();
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Multi Read Badge Book")
+        .execute(&db)
+        .await
+        .ok();
     sqlx::query("DELETE FROM books WHERE title = $1")
         .bind("Multi Read Badge Book")
         .execute(&db)

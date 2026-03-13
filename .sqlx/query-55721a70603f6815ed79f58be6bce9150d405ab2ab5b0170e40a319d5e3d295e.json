@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT COUNT(DISTINCT book_id) as \"count!\" FROM reads",
+  "query": "SELECT COUNT(*) as \"count!\" FROM reads WHERE deleted_at IS NULL",
   "describe": {
     "columns": [
       {
@@ -16,5 +16,5 @@
       null
     ]
   },
-  "hash": "83dc4ed2945cbd51a957a94c6222a95bf32966326c3cad7360601e9f8b730b7e"
+  "hash": "55721a70603f6815ed79f58be6bce9150d405ab2ab5b0170e40a319d5e3d295e"
 }

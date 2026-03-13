@@ -1,0 +1,32 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT b.title, b.author, COUNT(r.read_id) as \"read_count!\"\n           FROM reads r JOIN books b ON b.book_id = r.book_id\n           WHERE r.deleted_at IS NULL\n           GROUP BY b.book_id, b.title, b.author\n           ORDER BY COUNT(r.read_id) DESC, MAX(r.read_date) DESC\n           LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "author",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "read_count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "7737f2e48d1a03ab9b9a67e67c213682187143f0a1755c1914f98baf38a039da"
+}
