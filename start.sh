@@ -7,8 +7,8 @@ set -e
 # Wait for tailscaled to be ready
 sleep 2
 
-# Bring up tailscale - uses TS_AUTHKEY env var automatically
-/app/tailscale up --hostname=bookworm
+# Bring up tailscale with auth key
+/app/tailscale up --hostname=bookworm --authkey="${TS_AUTHKEY}"
 
 # Start the application
 exec /app/bookworm
