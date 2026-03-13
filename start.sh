@@ -10,5 +10,8 @@ sleep 2
 # Bring up tailscale with auth key
 /app/tailscale up --hostname=bookworm --authkey="${TS_AUTHKEY}"
 
+# Serve HTTPS on the tailnet, proxying to the app on port 3000
+/app/tailscale serve --bg 3000
+
 # Start the application
 exec /app/bookworm
