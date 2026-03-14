@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use axum::{
-    extract::{Form, Query, State},
+    extract::{Form, Path, Query, State},
     http::{StatusCode, header},
     response::{IntoResponse, Redirect},
     routing::{get, post},
@@ -116,6 +116,8 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .route("/progress", get(progress))
         .route("/stats", get(stats))
         .route("/api/isbn/{isbn}", get(isbn_lookup))
+        .route("/books/{book_id}", get(book_detail))
+        .route("/books/{book_id}/read-again", post(book_read_again))
         .route("/manifest.webmanifest", get(manifest))
         .route("/icon.svg", get(icon_svg))
         .with_state(app_state)
@@ -474,7 +476,7 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
                                     "#" (offset + i as i64 + 1)
                                 }
                             }
-                            div class="flex-1 min-w-0" {
+                            a href=(format!("/books/{}", row.book_id)) class="flex-1 min-w-0 block" {
                                 div class="flex items-center gap-2" {
                                     span class="font-bold line-clamp-2" { (row.title) }
                                     @if row.read_count > 1 {
@@ -893,6 +895,185 @@ async fn stats(State(state): State<AppState>) -> Markup {
         }
     };
     layout("Stats", "stats", &content, total_reads, unique_books)
+}
+
+// ---------------------------------------------------------------------------
+// Book detail
+// ---------------------------------------------------------------------------
+
+#[allow(dead_code)]
+struct BookInfo {
+    title: String,
+    author: String,
+    isbn: Option<String>,
+    cover_url: Option<String>,
+}
+
+struct BookReadDate {
+    read_date: chrono::NaiveDate,
+}
+
+#[allow(clippy::too_many_lines)]
+async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uuid>) -> Markup {
+    let book = sqlx::query_as!(
+        BookInfo,
+        r#"SELECT title, author, isbn, cover_url FROM books WHERE book_id = $1"#,
+        book_id
+    )
+    .fetch_optional(&state.db)
+    .await
+    .unwrap_or_else(|e| {
+        tracing::error!("Failed to fetch book: {e}");
+        None
+    });
+
+    let total_reads: i64 =
+        sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!" FROM reads WHERE deleted_at IS NULL"#)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(0);
+
+    let unique_books: i64 = sqlx::query_scalar!(
+        r#"SELECT COUNT(DISTINCT book_id) as "count!" FROM reads WHERE deleted_at IS NULL"#
+    )
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+
+    let Some(book) = book else {
+        let content = html! {
+            div class="text-center py-12" {
+                div class="text-4xl mb-4" { "📖" }
+                h1 class="font-heading text-2xl font-bold mb-2" { "Book Not Found" }
+                p class="text-subtext mb-4" { "This book doesn't exist in the library." }
+                a href="/library" class="text-accent-orange font-bold hover:underline" { "← Back to Library" }
+            }
+        };
+        return layout("Not Found", "library", &content, total_reads, unique_books);
+    };
+
+    let reads = sqlx::query_as!(
+        BookReadDate,
+        r#"SELECT read_date FROM reads
+           WHERE book_id = $1 AND deleted_at IS NULL
+           ORDER BY read_date DESC, created_at DESC"#,
+        book_id
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_else(|e| {
+        tracing::error!("Failed to fetch reads for book: {e}");
+        Vec::new()
+    });
+
+    let read_count = reads.len();
+    let first_read = reads.last().map(|r| r.read_date);
+    let last_read = reads.first().map(|r| r.read_date);
+
+    let content = html! {
+        a href="/library" class="text-accent-orange font-bold text-sm hover:underline inline-block mb-4" {
+            "← Back to Library"
+        }
+
+        div class="bg-white rounded-2xl border border-card-border p-6 shadow-sm mb-6" {
+            div class="flex gap-4" {
+                // Book cover
+                div class="shrink-0" {
+                    @if let Some(cover) = &book.cover_url {
+                        img src=(cover) alt=(book.title)
+                            class="w-24 h-36 object-cover rounded-xl shadow-sm";
+                    } @else {
+                        div class="w-24 h-36 bg-accent-bg-purple rounded-xl flex items-center justify-center" {
+                            span class="text-4xl" { "📖" }
+                        }
+                    }
+                }
+
+                // Title and author
+                div class="flex-1 min-w-0" {
+                    h1 class="font-heading text-2xl font-bold leading-tight line-clamp-3" { (book.title) }
+                    @if !book.author.is_empty() {
+                        p class="text-subtext mt-1" { "by " (book.author) }
+                    }
+                    @if let Some(isbn) = &book.isbn {
+                        p class="text-subtext text-xs mt-2" { "ISBN: " (isbn) }
+                    }
+                }
+            }
+
+            // Read Again button
+            form method="post" action=(format!("/books/{}/read-again", book_id)) class="mt-4" {
+                button type="submit"
+                    class="bg-gradient-to-r from-accent-orange to-accent-red text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow w-full" {
+                    "Read Again 📖"
+                }
+            }
+        }
+
+        // Stats cards
+        div class="grid grid-cols-3 gap-3 mb-6" {
+            div class="bg-white rounded-xl border border-card-border p-4 text-center" {
+                div class="font-heading text-2xl font-bold text-accent-purple" { (read_count) }
+                div class="text-xs text-subtext" { "Times Read" }
+            }
+            div class="bg-white rounded-xl border border-card-border p-4 text-center" {
+                @if let Some(first) = first_read {
+                    div class="font-heading text-sm font-bold text-accent-green" { (first.format("%b %-d, %Y")) }
+                } @else {
+                    div class="font-heading text-sm font-bold text-subtext" { "—" }
+                }
+                div class="text-xs text-subtext" { "First Read" }
+            }
+            div class="bg-white rounded-xl border border-card-border p-4 text-center" {
+                @if let Some(last) = last_read {
+                    div class="font-heading text-sm font-bold text-accent-blue" { (last.format("%b %-d, %Y")) }
+                } @else {
+                    div class="font-heading text-sm font-bold text-subtext" { "—" }
+                }
+                div class="text-xs text-subtext" { "Last Read" }
+            }
+        }
+
+        // Reading timeline
+        @if !reads.is_empty() {
+            div class="bg-white rounded-2xl border border-card-border p-6 shadow-sm" {
+                h2 class="font-heading text-lg font-bold mb-4" { "Reading Timeline" }
+                div class="space-y-3" {
+                    @for (i, read) in reads.iter().enumerate() {
+                        @let colors = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "teal"];
+                        @let color = colors[i % colors.len()];
+                        div class="flex items-center gap-3" {
+                            span class=(format!("bg-accent-{color} text-white rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold shrink-0")) {
+                                (read_count - i)
+                            }
+                            div class="flex-1" {
+                                div class="font-bold text-sm" { (read.read_date.format("%B %-d, %Y")) }
+                                @if i == reads.len() - 1 {
+                                    span class="text-xs text-accent-green font-bold" { "First read! ⭐" }
+                                } @else if i == 0 {
+                                    span class="text-xs text-subtext" { "Most recent" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+    layout(&book.title, "library", &content, total_reads, unique_books)
+}
+
+async fn book_read_again(
+    State(state): State<AppState>,
+    Path(book_id): Path<uuid::Uuid>,
+) -> Redirect {
+    if let Err(e) = sqlx::query!("INSERT INTO reads (book_id) VALUES ($1)", book_id)
+        .execute(&state.db)
+        .await
+    {
+        tracing::error!("Failed to insert read: {e}");
+    }
+    Redirect::to(&format!("/books/{book_id}"))
 }
 
 // ---------------------------------------------------------------------------

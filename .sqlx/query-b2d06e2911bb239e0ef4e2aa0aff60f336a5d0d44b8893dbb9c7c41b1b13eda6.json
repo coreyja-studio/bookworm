@@ -1,0 +1,22 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT read_date FROM reads\n           WHERE book_id = $1 AND deleted_at IS NULL\n           ORDER BY read_date DESC, created_at DESC",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "read_date",
+        "type_info": "Date"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b2d06e2911bb239e0ef4e2aa0aff60f336a5d0d44b8893dbb9c7c41b1b13eda6"
+}
