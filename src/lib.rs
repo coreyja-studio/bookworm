@@ -118,6 +118,7 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .route("/api/isbn/{isbn}", get(isbn_lookup))
         .route("/books/{book_id}", get(book_detail))
         .route("/books/{book_id}/read-again", post(book_read_again))
+        .route("/books/{book_id}/edit", post(edit_book))
         .route("/books/{book_id}/update-isbn", post(update_book_isbn))
         .route("/books/{book_id}/merge", get(merge_form).post(merge_books))
         .route("/manifest.webmanifest", get(manifest))
@@ -218,6 +219,12 @@ struct MergeInput {
 struct UpdateIsbnInput {
     isbn: String,
     cover_url: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct EditBookInput {
+    title: String,
+    author: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -1011,14 +1018,43 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                     }
                 }
 
-                // Title and author
-                div class="flex-1 min-w-0" {
-                    h1 class="font-heading text-2xl font-bold leading-tight line-clamp-3" { (book.title) }
+                // Title and author (display mode)
+                div id="book-info-display" class="flex-1 min-w-0" {
+                    div class="flex items-start gap-2" {
+                        h1 class="font-heading text-2xl font-bold leading-tight line-clamp-3 flex-1" { (book.title) }
+                        button type="button" onclick="document.getElementById('book-info-display').classList.add('hidden'); document.getElementById('book-info-edit').classList.remove('hidden');"
+                            class="text-subtext hover:text-accent-orange text-sm shrink-0 mt-1" { "✏️" }
+                    }
                     @if !book.author.is_empty() {
                         p class="text-subtext mt-1" { "by " (book.author) }
                     }
                     @if let Some(isbn) = &book.isbn {
                         p class="text-subtext text-xs mt-2" { "ISBN: " (isbn) }
+                    }
+                }
+                // Title and author (edit mode)
+                div id="book-info-edit" class="hidden flex-1 min-w-0" {
+                    form method="post" action=(format!("/books/{}/edit", book_id)) class="space-y-2" {
+                        div {
+                            label class="block text-xs font-bold text-subtext uppercase tracking-wide mb-1" { "TITLE" }
+                            input type="text" name="title" value=(book.title) required
+                                class="w-full bg-accent-bg-orange rounded-xl px-3 py-2 text-sm border-none focus:ring-2 focus:ring-accent-orange focus:outline-none";
+                        }
+                        div {
+                            label class="block text-xs font-bold text-subtext uppercase tracking-wide mb-1" { "AUTHOR" }
+                            input type="text" name="author" value=(book.author)
+                                class="w-full bg-accent-bg-orange rounded-xl px-3 py-2 text-sm border-none focus:ring-2 focus:ring-accent-orange focus:outline-none";
+                        }
+                        div class="flex gap-2" {
+                            button type="submit"
+                                class="bg-accent-orange text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-accent-red transition-colors" {
+                                "Save"
+                            }
+                            button type="button" onclick="document.getElementById('book-info-edit').classList.add('hidden'); document.getElementById('book-info-display').classList.remove('hidden');"
+                                class="text-subtext font-bold px-4 py-2 rounded-xl text-sm hover:text-ink transition-colors" {
+                                "Cancel"
+                            }
+                        }
                     }
                 }
             }
@@ -1137,6 +1173,32 @@ async fn book_read_again(
         .await
     {
         tracing::error!("Failed to insert read: {e}");
+    }
+    Redirect::to(&format!("/books/{book_id}"))
+}
+
+async fn edit_book(
+    State(state): State<AppState>,
+    Path(book_id): Path<uuid::Uuid>,
+    Form(input): Form<EditBookInput>,
+) -> Redirect {
+    let title = input.title.trim().to_string();
+    let author = input.author.trim().to_string();
+
+    if title.is_empty() {
+        return Redirect::to(&format!("/books/{book_id}"));
+    }
+
+    if let Err(e) = sqlx::query!(
+        "UPDATE books SET title = $1, author = $2 WHERE book_id = $3",
+        title,
+        author,
+        book_id
+    )
+    .execute(&state.db)
+    .await
+    {
+        tracing::error!("Failed to update book: {e}");
     }
     Redirect::to(&format!("/books/{book_id}"))
 }
