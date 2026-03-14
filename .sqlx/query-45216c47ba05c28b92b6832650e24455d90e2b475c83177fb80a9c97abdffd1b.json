@@ -1,0 +1,44 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT b.book_id, b.title, b.author, r.read_date, b.cover_url as \"cover_url?\"\n           FROM reads r JOIN books b ON b.book_id = r.book_id\n           WHERE r.deleted_at IS NULL\n           ORDER BY r.created_at DESC LIMIT 3",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "book_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "author",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "read_date",
+        "type_info": "Date"
+      },
+      {
+        "ordinal": 4,
+        "name": "cover_url?",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "45216c47ba05c28b92b6832650e24455d90e2b475c83177fb80a9c97abdffd1b"
+}
