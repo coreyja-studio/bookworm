@@ -918,19 +918,30 @@ async fn isbn_lookup(
         return Err(axum::http::StatusCode::BAD_REQUEST);
     }
 
+    if let Some(result) = lookup_open_library(&state.http_client, &isbn).await {
+        return Ok(axum::Json(result));
+    }
+
+    if let Some(result) = lookup_google_books(&state.http_client, &isbn).await {
+        return Ok(axum::Json(result));
+    }
+
+    Err(axum::http::StatusCode::NOT_FOUND)
+}
+
+async fn lookup_open_library(client: &reqwest::Client, isbn: &str) -> Option<IsbnResult> {
     let ol_url = format!("https://openlibrary.org/isbn/{isbn}.json");
-    let ol_resp: serde_json::Value = state
-        .http_client
+    let ol_resp: serde_json::Value = client
         .get(&ol_url)
         .timeout(std::time::Duration::from_secs(10))
         .send()
         .await
-        .map_err(|_| axum::http::StatusCode::BAD_GATEWAY)?
+        .ok()?
         .error_for_status()
-        .map_err(|_| axum::http::StatusCode::NOT_FOUND)?
+        .ok()?
         .json()
         .await
-        .map_err(|_| axum::http::StatusCode::BAD_GATEWAY)?;
+        .ok()?;
 
     let title = ol_resp["title"]
         .as_str()
@@ -938,7 +949,7 @@ async fn isbn_lookup(
         .to_string();
 
     let author = {
-        let edition_author = get_author_from_keys(&state.http_client, &ol_resp["authors"]).await;
+        let edition_author = get_author_from_keys(client, &ol_resp["authors"]).await;
         if edition_author.is_empty() {
             if let Some(work_key) = ol_resp["works"]
                 .as_array()
@@ -947,8 +958,7 @@ async fn isbn_lookup(
             {
                 let work_url = format!("https://openlibrary.org{work_key}.json");
                 async {
-                    let resp = state
-                        .http_client
+                    let resp = client
                         .get(&work_url)
                         .timeout(std::time::Duration::from_secs(10))
                         .send()
@@ -961,8 +971,7 @@ async fn isbn_lookup(
                         .as_str()
                         .or_else(|| first["key"].as_str())?;
                     let author_url = format!("https://openlibrary.org{author_key}.json");
-                    let author_resp = state
-                        .http_client
+                    let author_resp = client
                         .get(&author_url)
                         .timeout(std::time::Duration::from_secs(10))
                         .send()
@@ -986,12 +995,50 @@ async fn isbn_lookup(
         .filter(|a| !a.is_empty())
         .map(|_| format!("https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg"));
 
-    Ok(axum::Json(IsbnResult {
+    Some(IsbnResult {
         title,
         author,
         cover_url,
-        isbn,
-    }))
+        isbn: isbn.to_string(),
+    })
+}
+
+async fn lookup_google_books(client: &reqwest::Client, isbn: &str) -> Option<IsbnResult> {
+    let url = format!("https://www.googleapis.com/books/v1/volumes?q=isbn:{isbn}");
+    let resp: serde_json::Value = client
+        .get(&url)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .ok()?
+        .error_for_status()
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+
+    let item = resp["items"].as_array()?.first()?;
+    let info = &item["volumeInfo"];
+
+    let title = info["title"].as_str()?.to_string();
+
+    let author = info["authors"]
+        .as_array()
+        .and_then(|a| a.first())
+        .and_then(|a| a.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let cover_url = info["imageLinks"]["thumbnail"]
+        .as_str()
+        .map(|u| u.replace("http://", "https://"));
+
+    Some(IsbnResult {
+        title,
+        author,
+        cover_url,
+        isbn: isbn.to_string(),
+    })
 }
 
 async fn get_author_from_keys(
