@@ -511,7 +511,7 @@ async fn history_redirect() -> Redirect {
     Redirect::permanent("/library")
 }
 
-#[allow(clippy::cast_precision_loss)]
+#[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
 async fn progress(State(state): State<AppState>, Query(params): Query<ProgressParams>) -> Markup {
     let show_reads = params.mode.as_deref() == Some("reads");
 
@@ -574,7 +574,7 @@ async fn progress(State(state): State<AppState>, Query(params): Query<ProgressPa
         div class="flex justify-center mb-6" {
             div class="inline-flex rounded-full border border-card-border overflow-hidden text-sm font-bold" {
                 a href="/progress"
-                    class=(format!("px-4 py-2 transition-colors {}", if !show_reads { active_tab } else { inactive_tab })) {
+                    class=(format!("px-4 py-2 transition-colors {}", if show_reads { inactive_tab } else { active_tab })) {
                     "Unique Books"
                 }
                 a href="/progress?mode=reads"
