@@ -1250,7 +1250,7 @@ async fn cover_endpoint_returns_200_for_stored_cover_image() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/books/{book_id}/cover"))
+                .uri(format!("/books/{book_id}/cover"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -1308,7 +1308,7 @@ async fn cover_endpoint_includes_cache_control_header() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/books/{book_id}/cover"))
+                .uri(format!("/books/{book_id}/cover"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -1375,7 +1375,7 @@ async fn cover_endpoint_content_type_matches_stored_value() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/books/{book_id}/cover"))
+                .uri(format!("/books/{book_id}/cover"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -1430,7 +1430,7 @@ async fn cover_endpoint_fetches_and_caches_external_url() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/books/{book_id}/cover"))
+                .uri(format!("/books/{book_id}/cover"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -1536,8 +1536,7 @@ async fn home_page_cover_uses_endpoint_path_not_direct_url() {
         &html[html.find("Cover Endpoint Home").unwrap_or(0)
             ..html
                 .find("Cover Endpoint Home")
-                .map(|i| (i + 200).min(html.len()))
-                .unwrap_or(200)]
+                .map_or(200, |i| (i + 200).min(html.len()))]
     );
     assert!(
         !html.contains(test_cover_url),
@@ -1659,7 +1658,7 @@ async fn book_detail_cover_uses_endpoint_path_not_direct_url() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/books/{book_id}"))
+                .uri(format!("/books/{book_id}"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
