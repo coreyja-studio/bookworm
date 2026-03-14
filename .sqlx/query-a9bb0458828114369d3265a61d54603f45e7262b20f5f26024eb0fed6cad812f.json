@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT b.title, b.author, r.read_date, b.cover_url as \"cover_url?\"\n           FROM reads r JOIN books b ON b.book_id = r.book_id\n           WHERE r.deleted_at IS NULL\n           ORDER BY r.created_at DESC LIMIT 3",
+  "query": "SELECT title, author, isbn, cover_url FROM books WHERE book_id = $1",
   "describe": {
     "columns": [
       {
@@ -15,24 +15,26 @@
       },
       {
         "ordinal": 2,
-        "name": "read_date",
-        "type_info": "Date"
+        "name": "isbn",
+        "type_info": "Text"
       },
       {
         "ordinal": 3,
-        "name": "cover_url?",
+        "name": "cover_url",
         "type_info": "Text"
       }
     ],
     "parameters": {
-      "Left": []
+      "Left": [
+        "Uuid"
+      ]
     },
     "nullable": [
       false,
       false,
-      false,
+      true,
       true
     ]
   },
-  "hash": "bf72c246a445a47f3aea73069bca5523f96d3c247c8bb7b4273e8433f00fa8ee"
+  "hash": "a9bb0458828114369d3265a61d54603f45e7262b20f5f26024eb0fed6cad812f"
 }
