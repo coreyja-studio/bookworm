@@ -1743,3 +1743,315 @@ async fn home_page_shows_placeholder_not_img_when_no_cover() {
         "Log page should NOT render an img pointing to the cover endpoint when no cover exists"
     );
 }
+// -- Primary button haptics and scale animation (BW-4e6412f3b4214c92) --
+
+#[tokio::test]
+async fn log_book_button_has_scale_animation_class() {
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/log")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    assert!(
+        html.contains("active:scale-95"),
+        "Log Book submit button should include active:scale-95 for press animation"
+    );
+}
+
+#[tokio::test]
+async fn log_book_button_has_btn_primary_selector_class() {
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/log")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    assert!(
+        html.contains("btn-primary"),
+        "Log Book submit button should have btn-primary class so haptic script can find it"
+    );
+}
+
+#[tokio::test]
+async fn log_book_button_uses_transition_not_transition_shadow() {
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/log")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    // The submit button must NOT use transition-shadow (which only animates shadow,
+    // blocking the scale animation). It should use the generic `transition` class.
+    assert!(
+        !html.contains("transition-shadow"),
+        "Log Book button should not use transition-shadow — scale animation requires generic transition class"
+    );
+}
+
+#[tokio::test]
+async fn read_again_button_has_scale_animation_class() {
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let db = make_test_db().await;
+
+    sqlx::query(
+        "DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)",
+    )
+    .bind("Haptic Test Book")
+    .execute(&db)
+    .await
+    .ok();
+    sqlx::query("DELETE FROM books WHERE title = $1")
+        .bind("Haptic Test Book")
+        .execute(&db)
+        .await
+        .ok();
+
+    let book_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO books (title, author) VALUES ('Haptic Test Book', 'Test Author') RETURNING book_id",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+
+    sqlx::query("INSERT INTO reads (book_id) VALUES ($1)")
+        .bind(book_id)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/books/{book_id}"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    assert!(
+        html.contains("active:scale-95"),
+        "Read Again button should include active:scale-95 for press animation"
+    );
+}
+
+#[tokio::test]
+async fn read_again_button_has_btn_primary_selector_class() {
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let db = make_test_db().await;
+
+    sqlx::query(
+        "DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)",
+    )
+    .bind("Haptic Selector Test Book")
+    .execute(&db)
+    .await
+    .ok();
+    sqlx::query("DELETE FROM books WHERE title = $1")
+        .bind("Haptic Selector Test Book")
+        .execute(&db)
+        .await
+        .ok();
+
+    let book_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO books (title, author) VALUES ('Haptic Selector Test Book', 'Test Author') RETURNING book_id",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+
+    sqlx::query("INSERT INTO reads (book_id) VALUES ($1)")
+        .bind(book_id)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/books/{book_id}"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    assert!(
+        html.contains("btn-primary"),
+        "Read Again button should have btn-primary class so haptic script can find it"
+    );
+}
+
+#[tokio::test]
+async fn read_again_button_uses_transition_not_transition_shadow() {
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let db = make_test_db().await;
+
+    sqlx::query(
+        "DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)",
+    )
+    .bind("Transition Test Book")
+    .execute(&db)
+    .await
+    .ok();
+    sqlx::query("DELETE FROM books WHERE title = $1")
+        .bind("Transition Test Book")
+        .execute(&db)
+        .await
+        .ok();
+
+    let book_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO books (title, author) VALUES ('Transition Test Book', 'Test Author') RETURNING book_id",
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+
+    sqlx::query("INSERT INTO reads (book_id) VALUES ($1)")
+        .bind(book_id)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/books/{book_id}"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    // Same as the Log Book button — transition-shadow blocks scale animation
+    assert!(
+        !html.contains("transition-shadow"),
+        "Read Again button should not use transition-shadow — scale animation requires generic transition class"
+    );
+}
+
+#[tokio::test]
+async fn layout_includes_web_haptics_script() {
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/log")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    assert!(
+        html.contains("web-haptics"),
+        "Layout should include the web-haptics library for mobile haptic feedback"
+    );
+}
+
+#[tokio::test]
+async fn haptic_script_targets_btn_primary_class() {
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/log")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    assert!(
+        html.contains(".btn-primary"),
+        "Haptic script should select elements via .btn-primary class"
+    );
+}
