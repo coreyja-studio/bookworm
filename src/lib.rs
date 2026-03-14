@@ -118,6 +118,7 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .route("/api/isbn/{isbn}", get(isbn_lookup))
         .route("/books/{book_id}", get(book_detail))
         .route("/books/{book_id}/read-again", post(book_read_again))
+        .route("/books/{book_id}/update-isbn", post(update_book_isbn))
         .route("/books/{book_id}/merge", get(merge_form).post(merge_books))
         .route("/manifest.webmanifest", get(manifest))
         .route("/icon.svg", get(icon_svg))
@@ -213,6 +214,12 @@ struct MergeInput {
     source_book_id: uuid::Uuid,
 }
 
+#[derive(Deserialize)]
+struct UpdateIsbnInput {
+    isbn: String,
+    cover_url: Option<String>,
+}
+
 // ---------------------------------------------------------------------------
 // Handlers
 // ---------------------------------------------------------------------------
@@ -301,10 +308,18 @@ async fn log_form(
                         @let colors = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "teal"];
                         @let color = colors[i % colors.len()];
                         div class="bg-white rounded-xl border border-card-border p-3 flex items-center gap-3" {
-                            span class=(format!("bg-accent-{color} text-white rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold shrink-0")) {
-                                "#"
+                            @if let Some(cover) = &entry.cover_url {
+                                a href=(format!("/books/{}", entry.book_id)) {
+                                    img src=(cover) alt=(entry.title) class="w-8 h-12 object-cover rounded shrink-0";
+                                }
+                            } @else {
+                                a href=(format!("/books/{}", entry.book_id)) {
+                                    span class=(format!("bg-accent-{color} text-white rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold shrink-0")) {
+                                        "#"
+                                    }
+                                }
                             }
-                            div class="flex-1 min-w-0" {
+                            a href=(format!("/books/{}", entry.book_id)) class="flex-1 min-w-0 block" {
                                 div class="font-bold truncate" { (entry.title) }
                                 @if !entry.author.is_empty() {
                                     div class="text-subtext text-sm truncate" { "by " (entry.author) }
@@ -1016,6 +1031,27 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                 }
             }
 
+            // Add/Update ISBN section
+            @if book.isbn.is_none() {
+                div class="mt-4 border-t border-card-border pt-4" {
+                    div class="flex justify-between items-center mb-2" {
+                        h3 class="font-bold text-sm" { "Add Cover via ISBN" }
+                        button type="button" id="scan-btn"
+                            class="text-xl hover:scale-110 transition-transform" { "📷" }
+                    }
+                    form method="post" action=(format!("/books/{}/update-isbn", book_id)) id="isbn-form" class="flex gap-2" {
+                        input type="text" name="isbn" id="isbn" required
+                            placeholder="Enter ISBN..."
+                            class="flex-1 bg-accent-bg-orange rounded-xl px-3 py-2 text-sm border-none focus:ring-2 focus:ring-accent-orange focus:outline-none";
+                        input type="hidden" name="cover_url" id="cover_url" value="";
+                        button type="submit"
+                            class="bg-accent-orange text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-accent-red transition-colors" {
+                            "Look Up"
+                        }
+                    }
+                }
+            }
+
             a href=(format!("/books/{}/merge", book_id))
                 class="block text-center text-subtext text-sm mt-2 hover:text-accent-orange" {
                 "Merge with another book"
@@ -1071,6 +1107,23 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                 }
             }
         }
+
+        @if book.isbn.is_none() {
+            div id="scanner-modal" class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" {
+                div class="bg-white rounded-2xl p-6 max-w-md w-full" {
+                    div class="flex justify-between items-center mb-4" {
+                        h2 class="font-heading text-xl font-bold" { "Scan ISBN Barcode" }
+                        button type="button" id="scan-close"
+                            class="text-subtext hover:text-ink text-2xl font-bold" { "\u{00d7}" }
+                    }
+                    div id="scanner-container" class="w-full" style="min-height:300px" {}
+                    p id="scan-status" class="text-sm text-subtext mt-3 text-center" {
+                        "Point your camera at the book's barcode"
+                    }
+                }
+            }
+            script type="module" { (PreEscaped(include_str!("../ts/dist/scanner.js"))) }
+        }
     };
     layout(&book.title, "library", &content, total_reads, unique_books)
 }
@@ -1084,6 +1137,50 @@ async fn book_read_again(
         .await
     {
         tracing::error!("Failed to insert read: {e}");
+    }
+    Redirect::to(&format!("/books/{book_id}"))
+}
+
+async fn update_book_isbn(
+    State(state): State<AppState>,
+    Path(book_id): Path<uuid::Uuid>,
+    Form(input): Form<UpdateIsbnInput>,
+) -> Redirect {
+    let isbn = input.isbn.trim().replace('-', "");
+    if isbn.is_empty() {
+        return Redirect::to(&format!("/books/{book_id}"));
+    }
+
+    // Use cover_url from form (scanner provides it), or look it up server-side
+    let cover_url = match input
+        .cover_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        Some(url) => Some(url.to_string()),
+        None => {
+            // Look up cover from ISBN APIs
+            if let Some(result) = lookup_open_library(&state.http_client, &isbn).await {
+                result.cover_url
+            } else if let Some(result) = lookup_google_books(&state.http_client, &isbn).await {
+                result.cover_url
+            } else {
+                None
+            }
+        }
+    };
+
+    if let Err(e) = sqlx::query!(
+        "UPDATE books SET isbn = $1, cover_url = COALESCE($2, cover_url) WHERE book_id = $3",
+        isbn,
+        cover_url.as_deref(),
+        book_id
+    )
+    .execute(&state.db)
+    .await
+    {
+        tracing::error!("Failed to update book ISBN: {e}");
     }
     Redirect::to(&format!("/books/{book_id}"))
 }

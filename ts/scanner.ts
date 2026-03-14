@@ -25,6 +25,10 @@ function initScanner(): void {
 
   if (!scanBtn || !modal || !closeBtn || !status) return;
 
+  // Detect which page we're on: detail page has isbn-form, log page has title input
+  const isbnForm = document.getElementById("isbn-form") as HTMLFormElement | null;
+  const isDetailPage = !!isbnForm;
+
   let scanner: Html5QrcodeType | null = null;
 
   function startScanner(): void {
@@ -58,17 +62,26 @@ function initScanner(): void {
         return resp.json() as Promise<IsbnResult>;
       })
       .then((data) => {
-        const titleEl = document.getElementById("title") as HTMLInputElement | null;
-        const authorEl = document.getElementById("author") as HTMLInputElement | null;
         const isbnEl = document.getElementById("isbn") as HTMLInputElement | null;
         const coverEl = document.getElementById("cover_url") as HTMLInputElement | null;
 
-        if (titleEl) titleEl.value = data.title;
-        if (authorEl) authorEl.value = data.author;
         if (isbnEl) isbnEl.value = data.isbn;
         if (coverEl && data.cover_url) coverEl.value = data.cover_url;
 
-        modal!.classList.add("hidden");
+        if (isDetailPage) {
+          // On detail page: submit the form to save ISBN + cover
+          modal!.classList.add("hidden");
+          if (isbnForm) isbnForm.submit();
+        } else {
+          // On log page: also fill title and author
+          const titleEl = document.getElementById("title") as HTMLInputElement | null;
+          const authorEl = document.getElementById("author") as HTMLInputElement | null;
+
+          if (titleEl) titleEl.value = data.title;
+          if (authorEl) authorEl.value = data.author;
+
+          modal!.classList.add("hidden");
+        }
       })
       .catch(() => {
         status!.textContent = "Could not find book for ISBN: " + decodedText;
