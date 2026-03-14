@@ -1839,13 +1839,11 @@ async fn read_again_button_has_scale_animation_class() {
 
     let db = make_test_db().await;
 
-    sqlx::query(
-        "DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)",
-    )
-    .bind("Haptic Test Book")
-    .execute(&db)
-    .await
-    .ok();
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Haptic Test Book")
+        .execute(&db)
+        .await
+        .ok();
     sqlx::query("DELETE FROM books WHERE title = $1")
         .bind("Haptic Test Book")
         .execute(&db)
@@ -1895,13 +1893,11 @@ async fn read_again_button_has_btn_primary_selector_class() {
 
     let db = make_test_db().await;
 
-    sqlx::query(
-        "DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)",
-    )
-    .bind("Haptic Selector Test Book")
-    .execute(&db)
-    .await
-    .ok();
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Haptic Selector Test Book")
+        .execute(&db)
+        .await
+        .ok();
     sqlx::query("DELETE FROM books WHERE title = $1")
         .bind("Haptic Selector Test Book")
         .execute(&db)
@@ -1951,13 +1947,11 @@ async fn read_again_button_uses_transition_not_transition_shadow() {
 
     let db = make_test_db().await;
 
-    sqlx::query(
-        "DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)",
-    )
-    .bind("Transition Test Book")
-    .execute(&db)
-    .await
-    .ok();
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Transition Test Book")
+        .execute(&db)
+        .await
+        .ok();
     sqlx::query("DELETE FROM books WHERE title = $1")
         .bind("Transition Test Book")
         .execute(&db)
