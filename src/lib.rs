@@ -120,6 +120,7 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .route("/books/{book_id}/read-again", post(book_read_again))
         .route("/books/{book_id}/edit", post(edit_book))
         .route("/books/{book_id}/update-isbn", post(update_book_isbn))
+        .route("/books/{book_id}/cover", get(book_cover))
         .route("/books/{book_id}/merge", get(merge_form).post(merge_books))
         .route("/manifest.webmanifest", get(manifest))
         .route("/icon.svg", get(icon_svg))
@@ -177,7 +178,7 @@ struct LibraryEntry {
     author: String,
     read_count: i64,
     last_read_date: chrono::NaiveDate,
-    cover_url: Option<String>,
+    has_cover: bool,
 }
 
 #[allow(dead_code)]
@@ -186,7 +187,7 @@ struct ReadEntry {
     title: String,
     author: String,
     read_date: chrono::NaiveDate,
-    cover_url: Option<String>,
+    has_cover: bool,
 }
 
 struct FaveBook {
@@ -263,7 +264,8 @@ async fn log_form(
 
     let recent = sqlx::query_as!(
         ReadEntry,
-        r#"SELECT b.book_id, b.title, b.author, r.read_date, b.cover_url as "cover_url?"
+        r#"SELECT b.book_id, b.title, b.author, r.read_date,
+               (b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as "has_cover!"
            FROM reads r JOIN books b ON b.book_id = r.book_id
            WHERE r.deleted_at IS NULL
            ORDER BY r.created_at DESC LIMIT 3"#
@@ -315,9 +317,9 @@ async fn log_form(
                         @let colors = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "teal"];
                         @let color = colors[i % colors.len()];
                         div class="bg-white rounded-xl border border-card-border p-3 flex items-center gap-3" {
-                            @if let Some(cover) = &entry.cover_url {
+                            @if entry.has_cover {
                                 a href=(format!("/books/{}", entry.book_id)) {
-                                    img src=(cover) alt=(entry.title) class="w-8 h-12 object-cover rounded shrink-0";
+                                    img src=(format!("/books/{}/cover", entry.book_id)) alt=(entry.title) class="w-8 h-12 object-cover rounded shrink-0";
                                 }
                             } @else {
                                 a href=(format!("/books/{}", entry.book_id)) {
@@ -431,14 +433,15 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
 
     let rows = sqlx::query_as!(
         LibraryEntry,
-        r#"SELECT b.book_id, b.title, b.author, b.cover_url as "cover_url?",
+        r#"SELECT b.book_id, b.title, b.author,
                COUNT(r.read_id) as "read_count!",
-               MAX(r.read_date) as "last_read_date!"
+               MAX(r.read_date) as "last_read_date!",
+               BOOL_OR(b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as "has_cover!"
            FROM books b
            JOIN reads r ON r.book_id = b.book_id
            WHERE r.deleted_at IS NULL
              AND ($1::TEXT IS NULL OR b.title ILIKE '%' || $1 || '%' OR b.author ILIKE '%' || $1 || '%')
-           GROUP BY b.book_id, b.title, b.author, b.cover_url
+           GROUP BY b.book_id, b.title, b.author
            ORDER BY MAX(r.read_date) DESC, MAX(r.created_at) DESC
            LIMIT 50 OFFSET $2"#,
         search.as_deref(),
@@ -498,8 +501,8 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
                     @let color = colors[i % colors.len()];
                     div class="bg-white rounded-xl border border-card-border p-4" {
                         div class="flex items-start gap-3" {
-                            @if let Some(cover) = &row.cover_url {
-                                img src=(cover) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0 mt-0.5";
+                            @if row.has_cover {
+                                img src=(format!("/books/{}/cover", row.book_id)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0 mt-0.5";
                             } @else {
                                 span class=(format!("bg-accent-{color} text-white rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5")) {
                                     "#" (offset + i as i64 + 1)
@@ -936,6 +939,7 @@ struct BookInfo {
     author: String,
     isbn: Option<String>,
     cover_url: Option<String>,
+    has_cover: bool,
 }
 
 struct BookReadDate {
@@ -946,7 +950,9 @@ struct BookReadDate {
 async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uuid>) -> Markup {
     let book = sqlx::query_as!(
         BookInfo,
-        r#"SELECT title, author, isbn, cover_url FROM books WHERE book_id = $1"#,
+        r#"SELECT title, author, isbn, cover_url,
+               (cover_image IS NOT NULL OR cover_url IS NOT NULL) as "has_cover!"
+           FROM books WHERE book_id = $1"#,
         book_id
     )
     .fetch_optional(&state.db)
@@ -1008,8 +1014,8 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
             div class="flex gap-4" {
                 // Book cover
                 div class="shrink-0" {
-                    @if let Some(cover) = &book.cover_url {
-                        img src=(cover) alt=(book.title)
+                    @if book.has_cover {
+                        img src=(format!("/books/{}/cover", book_id)) alt=(book.title)
                             class="w-24 h-36 object-cover rounded-xl shadow-sm";
                     } @else {
                         div class="w-24 h-36 bg-accent-bg-purple rounded-xl flex items-center justify-center" {
@@ -1164,6 +1170,95 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
     layout(&book.title, "library", &content, total_reads, unique_books)
 }
 
+async fn book_cover(
+    State(state): State<AppState>,
+    Path(book_id): Path<uuid::Uuid>,
+) -> impl IntoResponse {
+    let row = sqlx::query!(
+        r#"SELECT cover_image, cover_image_content_type, cover_url FROM books WHERE book_id = $1"#,
+        book_id
+    )
+    .fetch_optional(&state.db)
+    .await
+    .unwrap_or(None);
+
+    let Some(row) = row else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    // If we have stored bytes, serve them directly
+    if let Some(image_bytes) = row.cover_image {
+        let content_type = row
+            .cover_image_content_type
+            .unwrap_or_else(|| "image/jpeg".to_string());
+        return (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, content_type),
+                (header::CACHE_CONTROL, "public, max-age=86400".to_string()),
+            ],
+            image_bytes,
+        )
+            .into_response();
+    }
+
+    // If we have a cover_url, fetch it, cache it, and serve
+    let Some(cover_url) = row.cover_url else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let fetch_result = state
+        .http_client
+        .get(&cover_url)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await;
+
+    let response = match fetch_result {
+        Ok(resp) if resp.status().is_success() => resp,
+        _ => return StatusCode::NOT_FOUND.into_response(),
+    };
+
+    let content_type = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/jpeg")
+        .to_string();
+
+    if !content_type.starts_with("image/") {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+
+    let image_bytes = match response.bytes().await {
+        Ok(bytes) => bytes.to_vec(),
+        Err(_) => return StatusCode::NOT_FOUND.into_response(),
+    };
+
+    // Best-effort cache in DB
+    if let Err(e) = sqlx::query!(
+        "UPDATE books SET cover_image = $1, cover_image_content_type = $2 WHERE book_id = $3",
+        &image_bytes,
+        &content_type,
+        book_id
+    )
+    .execute(&state.db)
+    .await
+    {
+        tracing::error!("Failed to cache cover image: {e}");
+    }
+
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CACHE_CONTROL, "public, max-age=86400".to_string()),
+        ],
+        image_bytes,
+    )
+        .into_response()
+}
+
 async fn book_read_again(
     State(state): State<AppState>,
     Path(book_id): Path<uuid::Uuid>,
@@ -1263,7 +1358,9 @@ struct MergeCandidate {
 async fn merge_form(State(state): State<AppState>, Path(book_id): Path<uuid::Uuid>) -> Markup {
     let book = sqlx::query_as!(
         BookInfo,
-        r#"SELECT title, author, isbn, cover_url FROM books WHERE book_id = $1"#,
+        r#"SELECT title, author, isbn, cover_url,
+               (cover_image IS NOT NULL OR cover_url IS NOT NULL) as "has_cover!"
+           FROM books WHERE book_id = $1"#,
         book_id
     )
     .fetch_optional(&state.db)
