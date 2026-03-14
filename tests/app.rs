@@ -1517,7 +1517,7 @@ async fn home_page_cover_uses_endpoint_path_not_direct_url() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/")
+                .uri("/log")
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -1532,12 +1532,16 @@ async fn home_page_cover_uses_endpoint_path_not_direct_url() {
     let expected_cover_src = format!("/books/{book_id}/cover");
     assert!(
         html.contains(&expected_cover_src),
-        "Home page should render cover as img src='/books/{{id}}/cover' for books with a cover, got html snippet: {}",
-        &html[html.find("Cover Endpoint Home").unwrap_or(0)..html.find("Cover Endpoint Home").map(|i| (i + 200).min(html.len())).unwrap_or(200)]
+        "Log page should render cover as img src='/books/{{id}}/cover' for books with a cover, got html snippet: {}",
+        &html[html.find("Cover Endpoint Home").unwrap_or(0)
+            ..html
+                .find("Cover Endpoint Home")
+                .map(|i| (i + 200).min(html.len()))
+                .unwrap_or(200)]
     );
     assert!(
         !html.contains(test_cover_url),
-        "Home page should NOT use raw cover_url as img src — should use /books/{{id}}/cover instead"
+        "Log page should NOT use raw cover_url as img src — should use /books/{{id}}/cover instead"
     );
 }
 
@@ -1722,7 +1726,7 @@ async fn home_page_shows_placeholder_not_img_when_no_cover() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri("/")
+                .uri("/log")
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -1737,6 +1741,6 @@ async fn home_page_shows_placeholder_not_img_when_no_cover() {
     let cover_endpoint = format!("/books/{book_id}/cover");
     assert!(
         !html.contains(&cover_endpoint),
-        "Home page should NOT render an img pointing to the cover endpoint when no cover exists"
+        "Log page should NOT render an img pointing to the cover endpoint when no cover exists"
     );
 }
