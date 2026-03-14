@@ -1181,3 +1181,562 @@ async fn library_shows_reread_badge_for_multiple_reads() {
         "Library should show a re-read count badge for books read more than once"
     );
 }
+
+// =============================================================================
+// BW-8caf419f95de46fc: Photo capture for book covers (cover endpoint)
+// =============================================================================
+//
+// These tests define the expected behavior for:
+//   - GET /books/{book_id}/cover — serve BYTEA from DB, fetch-and-cache cover_url, or 404
+//   - Cache-Control: public, max-age=86400 on all successful cover responses
+//   - All three cover display locations (home, library, detail) use the /cover endpoint
+//     instead of raw external URLs
+//   - has_cover flag in queries replaces direct cover_url nullable checks
+//
+// Tests that require BYTEA cover_image and cover_image_content_type columns will fail
+// at runtime until those columns are added via migration.
+// Tests that check template HTML will fail until templates are updated to use /cover.
+
+// -- Cover endpoint: serve stored BYTEA --
+
+#[tokio::test]
+async fn cover_endpoint_returns_200_for_stored_cover_image() {
+    // GET /books/{book_id}/cover should return 200 with the stored binary data
+    // when cover_image (BYTEA) is set on the book.
+    //
+    // This test requires:
+    //   - cover_image BYTEA column on books table
+    //   - cover_image_content_type TEXT column on books table
+    //   - GET /books/{book_id}/cover route in routes()
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    let db = make_test_db().await;
+
+    // Cleanup
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Cover Stored Image BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM books WHERE title = $1")
+        .bind("Cover Stored Image BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+
+    let book_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO books (title, author) VALUES ('Cover Stored Image BW-8caf', 'Test Author') RETURNING book_id"
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+
+    // A minimal 2-byte PNG header as a fake image — enough to verify bytes are served
+    let fake_image_bytes: Vec<u8> = vec![0x89, 0x50, 0x4e, 0x47]; // PNG magic bytes
+    sqlx::query(
+        "UPDATE books SET cover_image = $1, cover_image_content_type = $2 WHERE book_id = $3",
+    )
+    .bind(&fake_image_bytes)
+    .bind("image/png")
+    .bind(book_id)
+    .execute(&db)
+    .await
+    .expect(
+        "Requires cover_image (BYTEA) and cover_image_content_type (TEXT) columns on books table",
+    );
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/books/{book_id}/cover"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "GET /books/{{id}}/cover should return 200 when cover_image is stored in DB"
+    );
+}
+
+#[tokio::test]
+async fn cover_endpoint_includes_cache_control_header() {
+    // A successful cover response must include Cache-Control: public, max-age=86400
+    // regardless of whether the image came from DB or external URL.
+    //
+    // This test requires the same columns and route as the previous test.
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    let db = make_test_db().await;
+
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Cover Cache Control BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM books WHERE title = $1")
+        .bind("Cover Cache Control BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+
+    let book_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO books (title, author) VALUES ('Cover Cache Control BW-8caf', 'Author') RETURNING book_id"
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+
+    let fake_bytes: Vec<u8> = vec![0xff, 0xd8, 0xff, 0xe0]; // JPEG SOI marker
+    sqlx::query(
+        "UPDATE books SET cover_image = $1, cover_image_content_type = $2 WHERE book_id = $3",
+    )
+    .bind(&fake_bytes)
+    .bind("image/jpeg")
+    .bind(book_id)
+    .execute(&db)
+    .await
+    .expect("Requires cover_image and cover_image_content_type columns");
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/books/{book_id}/cover"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let cache_control = response
+        .headers()
+        .get("cache-control")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    assert!(
+        cache_control.contains("public"),
+        "Cover response Cache-Control should include 'public', got: {cache_control}"
+    );
+    assert!(
+        cache_control.contains("max-age=86400"),
+        "Cover response Cache-Control should include 'max-age=86400', got: {cache_control}"
+    );
+}
+
+#[tokio::test]
+async fn cover_endpoint_content_type_matches_stored_value() {
+    // The Content-Type response header should match what was stored in
+    // cover_image_content_type, not a hardcoded value.
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    let db = make_test_db().await;
+
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Cover Content Type BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM books WHERE title = $1")
+        .bind("Cover Content Type BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+
+    let book_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO books (title, author) VALUES ('Cover Content Type BW-8caf', 'Author') RETURNING book_id"
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+
+    let fake_bytes: Vec<u8> = vec![0x47, 0x49, 0x46, 0x38]; // GIF magic
+    sqlx::query(
+        "UPDATE books SET cover_image = $1, cover_image_content_type = $2 WHERE book_id = $3",
+    )
+    .bind(&fake_bytes)
+    .bind("image/gif")
+    .bind(book_id)
+    .execute(&db)
+    .await
+    .expect("Requires cover_image and cover_image_content_type columns");
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/books/{book_id}/cover"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    assert!(
+        content_type.starts_with("image/gif"),
+        "Content-Type should reflect stored cover_image_content_type 'image/gif', got: {content_type}"
+    );
+}
+
+#[tokio::test]
+#[ignore = "Requires live network access to covers.openlibrary.org, plus cover_image/cover_image_content_type columns and GET /books/{id}/cover route"]
+async fn cover_endpoint_fetches_and_caches_external_url() {
+    // GET /books/{book_id}/cover when cover_image is NULL but cover_url is set should:
+    //   1. Fetch the external URL
+    //   2. Store the bytes and content type in cover_image / cover_image_content_type
+    //   3. Return the image with 200 and Cache-Control: public, max-age=86400
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    let db = make_test_db().await;
+
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Cover Cache External BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM books WHERE title = $1")
+        .bind("Cover Cache External BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+
+    let book_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO books (title, author, cover_url) VALUES ('Cover Cache External BW-8caf', 'Author', 'https://covers.openlibrary.org/b/isbn/9780064430173-M.jpg') RETURNING book_id"
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/books/{book_id}/cover"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.status(),
+        StatusCode::OK,
+        "Cover endpoint should fetch external URL and return 200"
+    );
+
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        content_type.starts_with("image/"),
+        "Fetched cover should have image/* content type, got: {content_type}"
+    );
+
+    // Verify the bytes were cached in DB
+    let cached: Option<Vec<u8>> =
+        sqlx::query_scalar("SELECT cover_image FROM books WHERE book_id = $1")
+            .bind(book_id)
+            .fetch_one(&db)
+            .await
+            .unwrap_or(None);
+
+    assert!(
+        cached.is_some(),
+        "External cover should be cached as cover_image in DB after first fetch"
+    );
+    assert!(
+        !cached.unwrap().is_empty(),
+        "Cached cover_image should not be empty"
+    );
+}
+
+// -- Template: home page uses /books/{id}/cover instead of raw cover_url --
+
+#[tokio::test]
+async fn home_page_cover_uses_endpoint_path_not_direct_url() {
+    // The home page recent reads list should render cover images as:
+    //   <img src="/books/{book_id}/cover" ...>
+    // NOT as:
+    //   <img src="https://external-url/...">
+    //
+    // Fails until the home page query adds `has_cover` and the template
+    // is updated to use format!("/books/{}/cover", entry.book_id).
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let db = make_test_db().await;
+    let test_cover_url = "https://covers.openlibrary.org/b/isbn/TEST-BW-8caf-HOME-M.jpg";
+
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Cover Endpoint Home BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM books WHERE title = $1")
+        .bind("Cover Endpoint Home BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+
+    let book_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO books (title, author, cover_url) VALUES ('Cover Endpoint Home BW-8caf', 'Author', $1) RETURNING book_id"
+    )
+    .bind(test_cover_url)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO reads (book_id) VALUES ($1)")
+        .bind(book_id)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    let expected_cover_src = format!("/books/{book_id}/cover");
+    assert!(
+        html.contains(&expected_cover_src),
+        "Home page should render cover as img src='/books/{{id}}/cover' for books with a cover, got html snippet: {}",
+        &html[html.find("Cover Endpoint Home").unwrap_or(0)..html.find("Cover Endpoint Home").map(|i| (i + 200).min(html.len())).unwrap_or(200)]
+    );
+    assert!(
+        !html.contains(test_cover_url),
+        "Home page should NOT use raw cover_url as img src — should use /books/{{id}}/cover instead"
+    );
+}
+
+// -- Template: library page uses /books/{id}/cover instead of raw cover_url --
+
+#[tokio::test]
+async fn library_page_cover_uses_endpoint_path_not_direct_url() {
+    // The library book list should render cover images as:
+    //   <img src="/books/{book_id}/cover" ...>
+    // NOT as:
+    //   <img src="https://external-url/...">
+    //
+    // Fails until the library query adds `has_cover` and the template is updated.
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let db = make_test_db().await;
+    let test_cover_url = "https://covers.openlibrary.org/b/isbn/TEST-BW-8caf-LIB-M.jpg";
+
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Cover Endpoint Lib BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM books WHERE title = $1")
+        .bind("Cover Endpoint Lib BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+
+    let book_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO books (title, author, cover_url) VALUES ('Cover Endpoint Lib BW-8caf', 'Author', $1) RETURNING book_id"
+    )
+    .bind(test_cover_url)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO reads (book_id) VALUES ($1)")
+        .bind(book_id)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/library")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    let expected_cover_src = format!("/books/{book_id}/cover");
+    assert!(
+        html.contains(&expected_cover_src),
+        "Library page should render cover as img src='/books/{{id}}/cover' for books with a cover"
+    );
+    assert!(
+        !html.contains(test_cover_url),
+        "Library page should NOT use raw cover_url as img src — should use /books/{{id}}/cover instead"
+    );
+}
+
+// -- Template: book detail page uses /books/{id}/cover instead of raw cover_url --
+
+#[tokio::test]
+async fn book_detail_cover_uses_endpoint_path_not_direct_url() {
+    // The book detail page should render the large cover image as:
+    //   <img src="/books/{book_id}/cover" ...>
+    // NOT as:
+    //   <img src="https://external-url/...">
+    //
+    // Fails until the book detail query adds `has_cover` and the template is updated.
+    // Note: cover_url should remain in the detail page struct for display in the edit form.
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let db = make_test_db().await;
+    let test_cover_url = "https://covers.openlibrary.org/b/isbn/TEST-BW-8caf-DETAIL-M.jpg";
+
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("Cover Endpoint Detail BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM books WHERE title = $1")
+        .bind("Cover Endpoint Detail BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+
+    let book_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO books (title, author, cover_url) VALUES ('Cover Endpoint Detail BW-8caf', 'Author', $1) RETURNING book_id"
+    )
+    .bind(test_cover_url)
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO reads (book_id) VALUES ($1)")
+        .bind(book_id)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri(&format!("/books/{book_id}"))
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    let expected_cover_src = format!("/books/{book_id}/cover");
+    assert!(
+        html.contains(&expected_cover_src),
+        "Book detail page should render large cover as img src='/books/{{id}}/cover'"
+    );
+    // The raw URL may still appear in the edit form's hidden input — that's acceptable.
+    // But it should NOT appear as an img src attribute.
+    assert!(
+        !html.contains(&format!("src=\"{test_cover_url}\"")),
+        "Book detail page should NOT use raw cover_url as img src attribute"
+    );
+}
+
+// -- has_cover: home placeholder shown when book has no cover --
+
+#[tokio::test]
+async fn home_page_shows_placeholder_not_img_when_no_cover() {
+    // When a book has neither cover_image nor cover_url, the home page
+    // should show the placeholder emoji, not an <img> tag pointing to /cover.
+    //
+    // This test should pass both before and after implementation (placeholder
+    // behavior hasn't changed), but explicitly documents the contract.
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let db = make_test_db().await;
+
+    sqlx::query("DELETE FROM reads WHERE book_id IN (SELECT book_id FROM books WHERE title = $1)")
+        .bind("No Cover Placeholder BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+    sqlx::query("DELETE FROM books WHERE title = $1")
+        .bind("No Cover Placeholder BW-8caf")
+        .execute(&db)
+        .await
+        .ok();
+
+    let book_id: uuid::Uuid = sqlx::query_scalar(
+        "INSERT INTO books (title, author) VALUES ('No Cover Placeholder BW-8caf', 'Author') RETURNING book_id"
+    )
+    .fetch_one(&db)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO reads (book_id) VALUES ($1)")
+        .bind(book_id)
+        .execute(&db)
+        .await
+        .unwrap();
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    let cover_endpoint = format!("/books/{book_id}/cover");
+    assert!(
+        !html.contains(&cover_endpoint),
+        "Home page should NOT render an img pointing to the cover endpoint when no cover exists"
+    );
+}
