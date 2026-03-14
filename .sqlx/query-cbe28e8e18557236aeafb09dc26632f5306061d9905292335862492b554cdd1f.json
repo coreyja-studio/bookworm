@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO books (title, author, isbn, cover_url)\n           VALUES ($1, $2, $3, $4)\n           ON CONFLICT ((LOWER(title))) DO UPDATE\n             SET isbn = COALESCE(EXCLUDED.isbn, books.isbn),\n                 cover_url = COALESCE(EXCLUDED.cover_url, books.cover_url)\n           RETURNING book_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "book_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "cbe28e8e18557236aeafb09dc26632f5306061d9905292335862492b554cdd1f"
+}

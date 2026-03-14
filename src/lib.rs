@@ -118,6 +118,7 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .route("/api/isbn/{isbn}", get(isbn_lookup))
         .route("/books/{book_id}", get(book_detail))
         .route("/books/{book_id}/read-again", post(book_read_again))
+        .route("/books/{book_id}/merge", get(merge_form).post(merge_books))
         .route("/manifest.webmanifest", get(manifest))
         .route("/icon.svg", get(icon_svg))
         .with_state(app_state)
@@ -205,6 +206,11 @@ struct RereadInput {
 #[derive(Deserialize)]
 struct DeleteInput {
     book_id: uuid::Uuid,
+}
+
+#[derive(Deserialize)]
+struct MergeInput {
+    source_book_id: uuid::Uuid,
 }
 
 // ---------------------------------------------------------------------------
@@ -351,10 +357,11 @@ async fn log_read(State(state): State<AppState>, Form(input): Form<LogReadInput>
         .map(str::trim)
         .filter(|s| !s.is_empty());
 
+    // Match by title (case-insensitive) to avoid duplicate books
     let book = sqlx::query_scalar!(
         r#"INSERT INTO books (title, author, isbn, cover_url)
            VALUES ($1, $2, $3, $4)
-           ON CONFLICT (title, author) DO UPDATE
+           ON CONFLICT ((LOWER(title))) DO UPDATE
              SET isbn = COALESCE(EXCLUDED.isbn, books.isbn),
                  cover_url = COALESCE(EXCLUDED.cover_url, books.cover_url)
            RETURNING book_id"#,
@@ -1008,6 +1015,11 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                     "Read Again 📖"
                 }
             }
+
+            a href=(format!("/books/{}/merge", book_id))
+                class="block text-center text-subtext text-sm mt-2 hover:text-accent-orange" {
+                "Merge with another book"
+            }
         }
 
         // Stats cards
@@ -1073,6 +1085,139 @@ async fn book_read_again(
     {
         tracing::error!("Failed to insert read: {e}");
     }
+    Redirect::to(&format!("/books/{book_id}"))
+}
+
+// ---------------------------------------------------------------------------
+// Merge books
+// ---------------------------------------------------------------------------
+
+#[allow(dead_code)]
+struct MergeCandidate {
+    book_id: uuid::Uuid,
+    title: String,
+    author: String,
+    read_count: i64,
+}
+
+#[allow(clippy::too_many_lines)]
+async fn merge_form(State(state): State<AppState>, Path(book_id): Path<uuid::Uuid>) -> Markup {
+    let book = sqlx::query_as!(
+        BookInfo,
+        r#"SELECT title, author, isbn, cover_url FROM books WHERE book_id = $1"#,
+        book_id
+    )
+    .fetch_optional(&state.db)
+    .await
+    .unwrap_or(None);
+
+    let total_reads: i64 =
+        sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!" FROM reads WHERE deleted_at IS NULL"#)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(0);
+
+    let unique_books: i64 = sqlx::query_scalar!(
+        r#"SELECT COUNT(DISTINCT book_id) as "count!" FROM reads WHERE deleted_at IS NULL"#
+    )
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+
+    let Some(book) = book else {
+        let content = html! {
+            div class="text-center py-12" {
+                h1 class="font-heading text-2xl font-bold mb-2" { "Book Not Found" }
+                a href="/library" class="text-accent-orange font-bold hover:underline" { "← Back to Library" }
+            }
+        };
+        return layout("Not Found", "library", &content, total_reads, unique_books);
+    };
+
+    let candidates = sqlx::query_as!(
+        MergeCandidate,
+        r#"SELECT b.book_id, b.title, b.author,
+               COUNT(r.read_id) as "read_count!"
+           FROM books b
+           JOIN reads r ON r.book_id = b.book_id
+           WHERE b.book_id != $1 AND r.deleted_at IS NULL
+           GROUP BY b.book_id, b.title, b.author
+           ORDER BY b.title ASC"#,
+        book_id
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    let content = html! {
+        a href=(format!("/books/{}", book_id)) class="text-accent-orange font-bold text-sm hover:underline inline-block mb-4" {
+            "← Back to " (book.title)
+        }
+
+        div class="bg-white rounded-2xl border border-card-border p-6 shadow-sm mb-6" {
+            h2 class="font-heading text-xl font-bold mb-2" { "Merge Books" }
+            p class="text-subtext text-sm mb-4" {
+                "Merge another book's reads into " strong { (book.title) }
+                ". The other book will be deleted and all its reads will be moved here."
+            }
+
+            @if candidates.is_empty() {
+                p class="text-subtext text-center py-8" { "No other books to merge with." }
+            } @else {
+                div class="space-y-2" {
+                    @for candidate in &candidates {
+                        form method="post" action=(format!("/books/{}/merge", book_id))
+                            onsubmit=(format!("return confirm('Merge \"{}\" into \"{}\"? This cannot be undone.')",
+                                candidate.title.replace('\'', "\\'").replace('"', "&quot;"),
+                                book.title.replace('\'', "\\'").replace('"', "&quot;"))) {
+                            input type="hidden" name="source_book_id" value=(candidate.book_id);
+                            button type="submit" class="w-full text-left bg-accent-bg-orange rounded-xl p-4 hover:bg-accent-bg-red transition-colors" {
+                                div class="flex items-center justify-between" {
+                                    div {
+                                        div class="font-bold" { (candidate.title) }
+                                        @if !candidate.author.is_empty() {
+                                            div class="text-subtext text-sm" { "by " (candidate.author) }
+                                        }
+                                        div class="text-subtext text-xs" { (candidate.read_count) " read(s)" }
+                                    }
+                                    span class="text-accent-orange font-bold text-sm shrink-0" { "Merge →" }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+    layout("Merge Books", "library", &content, total_reads, unique_books)
+}
+
+async fn merge_books(
+    State(state): State<AppState>,
+    Path(book_id): Path<uuid::Uuid>,
+    Form(input): Form<MergeInput>,
+) -> Redirect {
+    // Move all reads from source book to target book
+    if let Err(e) = sqlx::query!(
+        "UPDATE reads SET book_id = $1 WHERE book_id = $2",
+        book_id,
+        input.source_book_id
+    )
+    .execute(&state.db)
+    .await
+    {
+        tracing::error!("Failed to move reads during merge: {e}");
+        return Redirect::to(&format!("/books/{book_id}"));
+    }
+
+    // Delete the source book
+    if let Err(e) = sqlx::query!("DELETE FROM books WHERE book_id = $1", input.source_book_id)
+        .execute(&state.db)
+        .await
+    {
+        tracing::error!("Failed to delete source book during merge: {e}");
+    }
+
     Redirect::to(&format!("/books/{book_id}"))
 }
 

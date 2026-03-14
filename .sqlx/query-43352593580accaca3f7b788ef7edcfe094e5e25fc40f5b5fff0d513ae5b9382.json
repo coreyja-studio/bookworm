@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE reads SET book_id = $1 WHERE book_id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "43352593580accaca3f7b788ef7edcfe094e5e25fc40f5b5fff0d513ae5b9382"
+}
