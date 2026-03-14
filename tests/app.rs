@@ -554,7 +554,7 @@ async fn library_search_filters_results() {
         .ok();
 
     let book_id_a: uuid::Uuid = sqlx::query_scalar(
-        "INSERT INTO books (title, author) VALUES ('Alpha Search Book', 'Author A') ON CONFLICT (title, author) DO UPDATE SET title = EXCLUDED.title RETURNING book_id"
+        "INSERT INTO books (title, author) VALUES ('Alpha Search Book', 'Author A') ON CONFLICT ((LOWER(title))) DO UPDATE SET title = EXCLUDED.title RETURNING book_id"
     )
     .fetch_one(&db)
     .await
@@ -566,7 +566,7 @@ async fn library_search_filters_results() {
         .unwrap();
 
     let book_id_b: uuid::Uuid = sqlx::query_scalar(
-        "INSERT INTO books (title, author) VALUES ('Beta Other Book', 'Author B') ON CONFLICT (title, author) DO UPDATE SET title = EXCLUDED.title RETURNING book_id"
+        "INSERT INTO books (title, author) VALUES ('Beta Other Book', 'Author B') ON CONFLICT ((LOWER(title))) DO UPDATE SET title = EXCLUDED.title RETURNING book_id"
     )
     .fetch_one(&db)
     .await
