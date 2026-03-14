@@ -108,6 +108,7 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .route("/", get(home))
         .route("/log", get(log_form).post(log_read))
         .route("/library", get(library))
+        .route("/log/reread", post(log_reread))
         .route("/library/reread", post(library_reread))
         .route("/library/delete", post(library_delete))
         .route("/history", get(history_redirect))
@@ -154,6 +155,7 @@ struct LibraryEntry {
 
 #[allow(dead_code)]
 struct ReadEntry {
+    book_id: uuid::Uuid,
     title: String,
     author: String,
     read_date: chrono::NaiveDate,
@@ -217,7 +219,7 @@ async fn log_form(
 
     let recent = sqlx::query_as!(
         ReadEntry,
-        r#"SELECT b.title, b.author, r.read_date, b.cover_url as "cover_url?"
+        r#"SELECT b.book_id, b.title, b.author, r.read_date, b.cover_url as "cover_url?"
            FROM reads r JOIN books b ON b.book_id = r.book_id
            WHERE r.deleted_at IS NULL
            ORDER BY r.created_at DESC LIMIT 3"#
@@ -277,6 +279,10 @@ async fn log_form(
                                 @if !entry.author.is_empty() {
                                     div class="text-subtext text-sm truncate" { "by " (entry.author) }
                                 }
+                            }
+                            form method="post" action="/log/reread" {
+                                input type="hidden" name="book_id" value=(entry.book_id);
+                                button type="submit" class="text-accent-orange text-sm font-bold hover:underline shrink-0" { "Re-read" }
                             }
                         }
                     }
@@ -354,6 +360,16 @@ async fn log_read(State(state): State<AppState>, Form(input): Form<LogReadInput>
     }
 }
 
+async fn log_reread(State(state): State<AppState>, Form(input): Form<RereadInput>) -> Redirect {
+    if let Err(e) = sqlx::query!("INSERT INTO reads (book_id) VALUES ($1)", input.book_id)
+        .execute(&state.db)
+        .await
+    {
+        tracing::error!("Failed to insert re-read: {e}");
+    }
+    Redirect::to("/log?logged=true")
+}
+
 #[allow(clippy::too_many_lines, clippy::cast_possible_wrap)]
 async fn library(State(state): State<AppState>, Query(params): Query<LibraryParams>) -> Markup {
     let page = params.page.unwrap_or(0);
@@ -429,8 +445,12 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
                     @let color = colors[i % colors.len()];
                     div class="bg-white rounded-xl border border-card-border p-4" {
                         div class="flex items-start gap-3" {
-                            span class=(format!("bg-accent-{color} text-white rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5")) {
-                                "#" (offset + i as i64 + 1)
+                            @if let Some(cover) = &row.cover_url {
+                                img src=(cover) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0 mt-0.5";
+                            } @else {
+                                span class=(format!("bg-accent-{color} text-white rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5")) {
+                                    "#" (offset + i as i64 + 1)
+                                }
                             }
                             div class="flex-1 min-w-0" {
                                 div class="flex items-center gap-2" {
