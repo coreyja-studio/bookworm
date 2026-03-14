@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use axum::{
     extract::{Form, Query, State},
-    response::Redirect,
+    http::{StatusCode, header},
+    response::{IntoResponse, Redirect},
     routing::get,
 };
 use cja::{
@@ -134,7 +135,28 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .route("/log", get(log_form).post(log_read))
         .route("/history", get(history))
         .route("/stats", get(stats))
+        .route("/manifest.webmanifest", get(manifest))
+        .route("/icon.svg", get(icon_svg))
         .with_state(app_state)
+}
+
+async fn manifest() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "application/manifest+json")],
+        include_str!("static/manifest.json"),
+    )
+}
+
+async fn icon_svg() -> impl IntoResponse {
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "image/svg+xml"),
+            (header::CACHE_CONTROL, "public, max-age=86400"),
+        ],
+        include_str!("static/icon.svg"),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -359,8 +381,30 @@ fn layout(title: &str, content: &Markup) -> Markup {
         html lang="en" {
             head {
                 meta charset="utf-8";
-                meta name="viewport" content="width=device-width, initial-scale=1";
+                meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover";
                 title { (title) " | Bookworm" }
+
+                // PWA manifest
+                link rel="manifest" href="/manifest.webmanifest";
+
+                // Theme and branding
+                meta name="theme-color" content="#8B4513";
+                meta name="background-color" content="#FDF6EC";
+                meta name="description" content="Track reads for the 1,000 Books Before Kindergarten challenge";
+
+                // iOS PWA support
+                meta name="apple-mobile-web-app-capable" content="yes";
+                meta name="apple-mobile-web-app-status-bar-style" content="default";
+                meta name="apple-mobile-web-app-title" content="Bookworm";
+                link rel="apple-touch-icon" href="/icon.svg";
+
+                // Favicon
+                link rel="icon" href="/icon.svg" type="image/svg+xml";
+
+                // Disable phone number detection
+                meta name="format-detection" content="telephone=no";
+
+                // Fonts and styles
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="";
                 link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,200;7..72,400;7..72,600;7..72,700&display=swap" rel="stylesheet";
