@@ -512,10 +512,7 @@ async fn history_redirect() -> Redirect {
 }
 
 #[allow(clippy::cast_precision_loss)]
-async fn progress(
-    State(state): State<AppState>,
-    Query(params): Query<ProgressParams>,
-) -> Markup {
+async fn progress(State(state): State<AppState>, Query(params): Query<ProgressParams>) -> Markup {
     let show_reads = params.mode.as_deref() == Some("reads");
 
     let total_reads: i64 =
@@ -531,8 +528,16 @@ async fn progress(
     .await
     .unwrap_or(0);
 
-    let progress_count = if show_reads { total_reads } else { unique_books };
-    let progress_label = if show_reads { "total reads" } else { "unique books" };
+    let progress_count = if show_reads {
+        total_reads
+    } else {
+        unique_books
+    };
+    let progress_label = if show_reads {
+        "total reads"
+    } else {
+        "unique books"
+    };
     let percentage = std::cmp::min((progress_count * 100) / 1000, 100);
     let amelia_birthday = chrono::NaiveDate::from_ymd_opt(2025, 1, 18).unwrap();
     let kindergarten_start = chrono::NaiveDate::from_ymd_opt(2030, 9, 1).unwrap();
