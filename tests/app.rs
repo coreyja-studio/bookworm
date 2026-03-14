@@ -1867,7 +1867,7 @@ async fn read_again_button_has_scale_animation_class() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/books/{book_id}"))
+                .uri(format!("/books/{book_id}"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -1921,7 +1921,7 @@ async fn read_again_button_has_btn_primary_selector_class() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/books/{book_id}"))
+                .uri(format!("/books/{book_id}"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
@@ -1975,7 +1975,7 @@ async fn read_again_button_uses_transition_not_transition_shadow() {
     let response = app
         .oneshot(
             Request::builder()
-                .uri(&format!("/books/{book_id}"))
+                .uri(format!("/books/{book_id}"))
                 .body(axum::body::Body::empty())
                 .unwrap(),
         )
