@@ -137,6 +137,11 @@ struct LibraryParams {
     deleted: Option<String>,
 }
 
+#[derive(Deserialize)]
+struct ProgressParams {
+    mode: Option<String>,
+}
+
 #[allow(dead_code)]
 struct LibraryEntry {
     book_id: uuid::Uuid,
@@ -506,8 +511,10 @@ async fn history_redirect() -> Redirect {
     Redirect::permanent("/library")
 }
 
-#[allow(clippy::cast_precision_loss)]
-async fn progress(State(state): State<AppState>) -> Markup {
+#[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
+async fn progress(State(state): State<AppState>, Query(params): Query<ProgressParams>) -> Markup {
+    let show_reads = params.mode.as_deref() == Some("reads");
+
     let total_reads: i64 =
         sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!" FROM reads WHERE deleted_at IS NULL"#)
             .fetch_one(&state.db)
@@ -521,7 +528,17 @@ async fn progress(State(state): State<AppState>) -> Markup {
     .await
     .unwrap_or(0);
 
-    let percentage = std::cmp::min((unique_books * 100) / 1000, 100);
+    let progress_count = if show_reads {
+        total_reads
+    } else {
+        unique_books
+    };
+    let progress_label = if show_reads {
+        "total reads"
+    } else {
+        "unique books"
+    };
+    let percentage = std::cmp::min((progress_count * 100) / 1000, 100);
     let amelia_birthday = chrono::NaiveDate::from_ymd_opt(2025, 1, 18).unwrap();
     let kindergarten_start = chrono::NaiveDate::from_ymd_opt(2030, 9, 1).unwrap();
     let today = chrono::Utc::now().date_naive();
@@ -529,15 +546,15 @@ async fn progress(State(state): State<AppState>) -> Markup {
     let total_days = (kindergarten_start - amelia_birthday).num_days();
     let days_elapsed = (today - amelia_birthday).num_days().max(0);
     let timeline_pct = (days_elapsed as f64 / total_days as f64 * 100.0).min(100.0);
-    let books_remaining = (1000 - unique_books).max(0);
+    let remaining = (1000 - progress_count).max(0);
     let months_left = days_left as f64 / 30.44;
-    let books_per_month = if months_left > 0.0 {
-        books_remaining as f64 / months_left
+    let per_month = if months_left > 0.0 {
+        remaining as f64 / months_left
     } else {
         0.0
     };
-    let books_per_week = if days_left > 0 {
-        books_remaining as f64 / (days_left as f64 / 7.0)
+    let per_week = if days_left > 0 {
+        remaining as f64 / (days_left as f64 / 7.0)
     } else {
         0.0
     };
@@ -550,13 +567,29 @@ async fn progress(State(state): State<AppState>) -> Markup {
         (1000, "🏆", "purple"),
     ];
 
+    let active_tab = "bg-ink text-white";
+    let inactive_tab = "bg-white text-subtext hover:bg-gray-50";
+
     let content = html! {
+        div class="flex justify-center mb-6" {
+            div class="inline-flex rounded-full border border-card-border overflow-hidden text-sm font-bold" {
+                a href="/progress"
+                    class=(format!("px-4 py-2 transition-colors {}", if show_reads { inactive_tab } else { active_tab })) {
+                    "Unique Books"
+                }
+                a href="/progress?mode=reads"
+                    class=(format!("px-4 py-2 transition-colors {}", if show_reads { active_tab } else { inactive_tab })) {
+                    "Total Reads"
+                }
+            }
+        }
+
         div class="text-center mb-6" {
             div class="font-heading text-6xl font-extrabold text-accent-green" {
                 (percentage) "%"
             }
             div class="text-subtext text-sm mt-1" {
-                (unique_books) " of 1,000 unique books"
+                (progress_count) " of 1,000 " (progress_label)
             }
         }
 
@@ -578,18 +611,18 @@ async fn progress(State(state): State<AppState>) -> Markup {
                 div class="text-xs text-subtext" { "Days Left" }
             }
             div class="bg-white rounded-xl border border-card-border p-4 text-center" {
-                div class="font-heading text-2xl font-bold text-accent-orange" { (format!("{books_per_month:.1}")) }
-                div class="text-xs text-subtext" { "Books/Month" }
+                div class="font-heading text-2xl font-bold text-accent-orange" { (format!("{per_month:.1}")) }
+                div class="text-xs text-subtext" { @if show_reads { "Reads/Month" } @else { "Books/Month" } }
             }
             div class="bg-white rounded-xl border border-card-border p-4 text-center" {
-                div class="font-heading text-2xl font-bold text-accent-purple" { (format!("{books_per_week:.1}")) }
-                div class="text-xs text-subtext" { "Books/Week" }
+                div class="font-heading text-2xl font-bold text-accent-purple" { (format!("{per_week:.1}")) }
+                div class="text-xs text-subtext" { @if show_reads { "Reads/Week" } @else { "Books/Week" } }
             }
         }
 
         div class="flex flex-wrap justify-center gap-3 mb-6" {
             @for (threshold, emoji, color) in &milestones {
-                @let earned = unique_books >= *threshold;
+                @let earned = progress_count >= *threshold;
                 @let opacity = if earned { "" } else { " opacity-30" };
                 div class=(format!("bg-accent-bg-{color} rounded-xl px-4 py-2 text-center{opacity}")) {
                     div class="text-2xl" { (*emoji) }
@@ -600,7 +633,7 @@ async fn progress(State(state): State<AppState>) -> Markup {
 
         div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-6" {
             @for i in 0..10usize {
-                (checkbox_grid(i, unique_books))
+                (checkbox_grid(i, progress_count))
             }
         }
     };
