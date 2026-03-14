@@ -9,12 +9,12 @@
     "format": "prettier --write ts/"
   },
   "devDependencies": {
-    "@eslint/js": "^9",
-    "eslint": "^9",
-    "html5-qrcode": "^2.3.8",
-    "oxc-transform": "^0.56.5",
-    "prettier": "^3",
+    "oxc-transform": "^0.56",
     "typescript": "^5.7",
-    "typescript-eslint": "^8"
+    "eslint": "^9",
+    "@eslint/js": "^9",
+    "typescript-eslint": "^8",
+    "prettier": "^3",
+    "html5-qrcode": "^2.3.8"
   }
 }
