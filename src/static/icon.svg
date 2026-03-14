@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#3D2C1E"/>
+  <rect x="48" y="48" width="416" height="416" rx="64" fill="#FFF6EC"/>
+  <!-- Open book -->
+  <path d="M256 160 C256 160 180 140 120 155 C100 160 90 175 90 195 L90 340 C90 355 100 365 120 360 C180 345 256 365 256 365" fill="#FFE4C8" stroke="#3D2C1E" stroke-width="6"/>
+  <path d="M256 160 C256 160 332 140 392 155 C412 160 422 175 422 195 L422 340 C422 355 412 365 392 360 C332 345 256 365 256 365" fill="#FFE4C8" stroke="#3D2C1E" stroke-width="6"/>
+  <!-- Book spine -->
+  <line x1="256" y1="155" x2="256" y2="370" stroke="#3D2C1E" stroke-width="4"/>
+  <!-- Text lines left page -->
+  <line x1="130" y1="200" x2="230" y2="200" stroke="#FFa040" stroke-width="4" stroke-linecap="round"/>
+  <line x1="130" y1="225" x2="220" y2="225" stroke="#FFa040" stroke-width="4" stroke-linecap="round"/>
+  <line x1="130" y1="250" x2="225" y2="250" stroke="#FFa040" stroke-width="4" stroke-linecap="round"/>
+  <line x1="130" y1="275" x2="215" y2="275" stroke="#FFa040" stroke-width="4" stroke-linecap="round"/>
+  <line x1="130" y1="300" x2="210" y2="300" stroke="#FFa040" stroke-width="4" stroke-linecap="round"/>
+  <!-- Text lines right page -->
+  <line x1="282" y1="200" x2="382" y2="200" stroke="#FFa040" stroke-width="4" stroke-linecap="round"/>
+  <line x1="282" y1="225" x2="372" y2="225" stroke="#FFa040" stroke-width="4" stroke-linecap="round"/>
+  <line x1="282" y1="250" x2="377" y2="250" stroke="#FFa040" stroke-width="4" stroke-linecap="round"/>
+  <line x1="282" y1="275" x2="367" y2="275" stroke="#FFa040" stroke-width="4" stroke-linecap="round"/>
+  <line x1="282" y1="300" x2="362" y2="300" stroke="#FFa040" stroke-width="4" stroke-linecap="round"/>
+  <!-- Cute bookworm -->
+  <circle cx="350" cy="130" r="28" fill="#5CD08E"/>
+  <circle cx="340" cy="120" r="5" fill="#3D2C1E"/>
+  <circle cx="360" cy="120" r="5" fill="#3D2C1E"/>
+  <path d="M342 132 Q350 140 358 132" stroke="#3D2C1E" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <!-- Worm body curving down -->
+  <path d="M350 158 C355 180 340 200 350 220 C360 240 345 255 350 270" stroke="#5CD08E" stroke-width="16" fill="none" stroke-linecap="round"/>
+  <!-- Tiny glasses on worm -->
+  <circle cx="340" cy="120" r="8" stroke="#FFa040" stroke-width="2" fill="none"/>
+  <circle cx="360" cy="120" r="8" stroke="#FFa040" stroke-width="2" fill="none"/>
+  <line x1="348" y1="120" x2="352" y2="120" stroke="#FFa040" stroke-width="2"/>
+</svg>
