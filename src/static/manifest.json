@@ -4,8 +4,8 @@
   "description": "Track reads for the 1,000 Books Before Kindergarten challenge",
   "start_url": "/stats",
   "display": "standalone",
-  "background_color": "#FDF6EC",
-  "theme_color": "#8B4513",
+  "background_color": "#FFF6EC",
+  "theme_color": "#3D2C1E",
   "orientation": "portrait-primary",
   "categories": ["books", "education"],
   "icons": [
