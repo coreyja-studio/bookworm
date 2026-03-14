@@ -1189,7 +1189,13 @@ async fn merge_form(State(state): State<AppState>, Path(book_id): Path<uuid::Uui
             }
         }
     };
-    layout("Merge Books", "library", &content, total_reads, unique_books)
+    layout(
+        "Merge Books",
+        "library",
+        &content,
+        total_reads,
+        unique_books,
+    )
 }
 
 async fn merge_books(
