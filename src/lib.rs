@@ -172,6 +172,7 @@ struct LogReadInput {
 struct LibraryParams {
     page: Option<u32>,
     q: Option<String>,
+    sort: Option<String>,
     reread: Option<String>,
     deleted: Option<String>,
 }
@@ -446,24 +447,47 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
     let offset = i64::from(page) * 50;
     let search = params.q.clone();
 
-    let rows = sqlx::query_as!(
-        LibraryEntry,
-        r#"SELECT b.book_id, b.title, b.author,
-               COUNT(r.read_id) as "read_count!",
-               MAX(r.read_date) as "last_read_date!",
-               BOOL_OR(b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as "has_cover!"
-           FROM books b
-           JOIN reads r ON r.book_id = b.book_id
-           WHERE r.deleted_at IS NULL
-             AND ($1::TEXT IS NULL OR b.title ILIKE '%' || $1 || '%' OR b.author ILIKE '%' || $1 || '%')
-           GROUP BY b.book_id, b.title, b.author
-           ORDER BY MAX(r.read_date) DESC, MAX(r.created_at) DESC
-           LIMIT 50 OFFSET $2"#,
-        search.as_deref(),
-        offset
-    )
-    .fetch_all(&state.db)
-    .await
+    let sort_alpha = params.sort.as_deref() == Some("alpha");
+
+    let rows = if sort_alpha {
+        sqlx::query_as!(
+            LibraryEntry,
+            r#"SELECT b.book_id, b.title, b.author,
+                   COUNT(r.read_id) as "read_count!",
+                   MAX(r.read_date) as "last_read_date!",
+                   BOOL_OR(b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as "has_cover!"
+               FROM books b
+               JOIN reads r ON r.book_id = b.book_id
+               WHERE r.deleted_at IS NULL
+                 AND ($1::TEXT IS NULL OR b.title ILIKE '%' || $1 || '%' OR b.author ILIKE '%' || $1 || '%')
+               GROUP BY b.book_id, b.title, b.author
+               ORDER BY LOWER(b.title) ASC
+               LIMIT 50 OFFSET $2"#,
+            search.as_deref(),
+            offset
+        )
+        .fetch_all(&state.db)
+        .await
+    } else {
+        sqlx::query_as!(
+            LibraryEntry,
+            r#"SELECT b.book_id, b.title, b.author,
+                   COUNT(r.read_id) as "read_count!",
+                   MAX(r.read_date) as "last_read_date!",
+                   BOOL_OR(b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as "has_cover!"
+               FROM books b
+               JOIN reads r ON r.book_id = b.book_id
+               WHERE r.deleted_at IS NULL
+                 AND ($1::TEXT IS NULL OR b.title ILIKE '%' || $1 || '%' OR b.author ILIKE '%' || $1 || '%')
+               GROUP BY b.book_id, b.title, b.author
+               ORDER BY MAX(r.read_date) DESC, MAX(r.created_at) DESC
+               LIMIT 50 OFFSET $2"#,
+            search.as_deref(),
+            offset
+        )
+        .fetch_all(&state.db)
+        .await
+    }
     .unwrap_or_else(|e| {
         tracing::error!("Failed to fetch library: {e}");
         Vec::new()
@@ -504,6 +528,19 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
             input type="text" name="q" value=(params.q.as_deref().unwrap_or(""))
                 placeholder="🔍 Search books..."
                 class="w-full bg-white rounded-xl border border-card-border px-4 py-3 focus:ring-2 focus:ring-accent-orange focus:outline-none";
+            @if sort_alpha {
+                input type="hidden" name="sort" value="alpha";
+            }
+        }
+
+        div class="flex justify-end mb-3" {
+            @if sort_alpha {
+                @let q_param = params.q.as_deref().map_or(String::new(), |q| format!("&q={}", urlencoding::encode(q)));
+                a href=(format!("/library?sort=recent{q_param}")) class="text-sm text-accent-orange font-bold" { "Sort: A→Z ▼" }
+            } @else {
+                @let q_param = params.q.as_deref().map_or(String::new(), |q| format!("&q={}", urlencoding::encode(q)));
+                a href=(format!("/library?sort=alpha{q_param}")) class="text-sm text-accent-orange font-bold" { "Sort: Recent ▼" }
+            }
         }
 
         @if rows.is_empty() {
@@ -550,15 +587,20 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
         }
 
         div class="flex justify-between mt-6" {
+            @let extra = {
+                use std::fmt::Write;
+                let mut s = String::new();
+                if let Some(q) = params.q.as_deref() { let _ = write!(s, "&q={}", urlencoding::encode(q)); }
+                if sort_alpha { s.push_str("&sort=alpha"); }
+                s
+            };
             @if has_prev {
-                @let prev_q = params.q.as_deref().map_or(String::new(), |q| format!("&q={}", urlencoding::encode(q)));
-                a href=(format!("/library?page={}{}", page - 1, prev_q)) class="text-accent-orange font-bold" { "← Previous" }
+                a href=(format!("/library?page={}{}", page - 1, extra)) class="text-accent-orange font-bold" { "← Previous" }
             } @else {
                 span {}
             }
             @if has_next {
-                @let next_q = params.q.as_deref().map_or(String::new(), |q| format!("&q={}", urlencoding::encode(q)));
-                a href=(format!("/library?page={}{}", page + 1, next_q)) class="text-accent-orange font-bold" { "Next →" }
+                a href=(format!("/library?page={}{}", page + 1, extra)) class="text-accent-orange font-bold" { "Next →" }
             }
         }
     };
