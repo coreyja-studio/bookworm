@@ -181,6 +181,7 @@ struct LibraryEntry {
     read_count: i64,
     last_read_date: chrono::NaiveDate,
     has_cover: bool,
+    cover_updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 #[allow(dead_code)]
@@ -190,6 +191,7 @@ struct ReadEntry {
     author: String,
     read_date: chrono::NaiveDate,
     has_cover: bool,
+    cover_updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 struct FaveBook {
@@ -267,7 +269,8 @@ async fn log_form(
     let recent = sqlx::query_as!(
         ReadEntry,
         r#"SELECT b.book_id, b.title, b.author, r.read_date,
-               (b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as "has_cover!"
+               (b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as "has_cover!",
+               b.cover_updated_at
            FROM reads r JOIN books b ON b.book_id = r.book_id
            WHERE r.deleted_at IS NULL
            ORDER BY r.created_at DESC LIMIT 3"#
@@ -321,7 +324,7 @@ async fn log_form(
                         div class="bg-white rounded-xl border border-card-border p-3 flex items-center gap-3" {
                             @if entry.has_cover {
                                 a href=(format!("/books/{}", entry.book_id)) {
-                                    img src=(format!("/books/{}/cover", entry.book_id)) alt=(entry.title) class="w-8 h-12 object-cover rounded shrink-0";
+                                    img src=(format!("/books/{}/cover?v={}", entry.book_id, entry.cover_updated_at.timestamp())) alt=(entry.title) class="w-8 h-12 object-cover rounded shrink-0";
                                 }
                             } @else {
                                 a href=(format!("/books/{}", entry.book_id)) {
@@ -438,7 +441,8 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
         r#"SELECT b.book_id, b.title, b.author,
                COUNT(r.read_id) as "read_count!",
                MAX(r.read_date) as "last_read_date!",
-               BOOL_OR(b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as "has_cover!"
+               BOOL_OR(b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as "has_cover!",
+               MAX(b.cover_updated_at) as "cover_updated_at?"
            FROM books b
            JOIN reads r ON r.book_id = b.book_id
            WHERE r.deleted_at IS NULL
@@ -504,7 +508,7 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
                     div class="bg-white rounded-xl border border-card-border p-4" {
                         div class="flex items-start gap-3" {
                             @if row.has_cover {
-                                img src=(format!("/books/{}/cover", row.book_id)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0 mt-0.5";
+                                img src=(format!("/books/{}/cover?v={}", row.book_id, row.cover_updated_at.map_or(0, |t| t.timestamp()))) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0 mt-0.5";
                             } @else {
                                 span class=(format!("bg-accent-{color} text-white rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5")) {
                                     "#" (offset + i as i64 + 1)
@@ -938,6 +942,7 @@ struct BookInfo {
     isbn: Option<String>,
     cover_url: Option<String>,
     has_cover: bool,
+    cover_updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 struct BookReadDate {
@@ -949,7 +954,8 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
     let book = sqlx::query_as!(
         BookInfo,
         r#"SELECT title, author, isbn, cover_url,
-               (cover_image IS NOT NULL OR cover_url IS NOT NULL) as "has_cover!"
+               (cover_image IS NOT NULL OR cover_url IS NOT NULL) as "has_cover!",
+               cover_updated_at
            FROM books WHERE book_id = $1"#,
         book_id
     )
@@ -1013,7 +1019,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                 // Book cover
                 div class="shrink-0" {
                     @if book.has_cover {
-                        img src=(format!("/books/{}/cover", book_id)) alt=(book.title)
+                        img src=(format!("/books/{}/cover?v={}", book_id, book.cover_updated_at.timestamp())) alt=(book.title)
                             class="w-24 h-36 object-cover rounded-xl shadow-sm";
                     } @else {
                         div class="w-24 h-36 bg-accent-bg-purple rounded-xl flex items-center justify-center" {
@@ -1222,7 +1228,7 @@ async fn book_cover(
             StatusCode::OK,
             [
                 (header::CONTENT_TYPE, content_type),
-                (header::CACHE_CONTROL, "no-store".to_string()),
+                (header::CACHE_CONTROL, "public, max-age=86400".to_string()),
             ],
             image_bytes,
         )
@@ -1264,7 +1270,7 @@ async fn book_cover(
 
     // Best-effort cache in DB
     if let Err(e) = sqlx::query!(
-        "UPDATE books SET cover_image = $1, cover_image_content_type = $2 WHERE book_id = $3",
+        "UPDATE books SET cover_image = $1, cover_image_content_type = $2, cover_updated_at = NOW() WHERE book_id = $3",
         &image_bytes,
         &content_type,
         book_id
@@ -1343,7 +1349,7 @@ async fn upload_cover(
     }
 
     if let Err(e) = sqlx::query!(
-        "UPDATE books SET cover_image = $1, cover_image_content_type = $2 WHERE book_id = $3",
+        "UPDATE books SET cover_image = $1, cover_image_content_type = $2, cover_updated_at = NOW() WHERE book_id = $3",
         &jpeg_bytes,
         "image/jpeg",
         book_id
@@ -1481,7 +1487,8 @@ async fn merge_form(State(state): State<AppState>, Path(book_id): Path<uuid::Uui
     let book = sqlx::query_as!(
         BookInfo,
         r#"SELECT title, author, isbn, cover_url,
-               (cover_image IS NOT NULL OR cover_url IS NOT NULL) as "has_cover!"
+               (cover_image IS NOT NULL OR cover_url IS NOT NULL) as "has_cover!",
+               cover_updated_at
            FROM books WHERE book_id = $1"#,
         book_id
     )

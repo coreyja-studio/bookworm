@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT title, author, isbn, cover_url,\n               (cover_image IS NOT NULL OR cover_url IS NOT NULL) as \"has_cover!\"\n           FROM books WHERE book_id = $1",
+  "query": "SELECT title, author, isbn, cover_url,\n               (cover_image IS NOT NULL OR cover_url IS NOT NULL) as \"has_cover!\",\n               cover_updated_at\n           FROM books WHERE book_id = $1",
   "describe": {
     "columns": [
       {
@@ -27,6 +27,11 @@
         "ordinal": 4,
         "name": "has_cover!",
         "type_info": "Bool"
+      },
+      {
+        "ordinal": 5,
+        "name": "cover_updated_at",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
@@ -39,8 +44,9 @@
       false,
       true,
       true,
-      null
+      null,
+      false
     ]
   },
-  "hash": "fd1c8fe39e6b42036560b183171f71c441f7f6d60606cec324a734b2cedf55e1"
+  "hash": "f61a70aa3498206a3cef006615387157635dbfafbeb3f614ad998fdef6106678"
 }

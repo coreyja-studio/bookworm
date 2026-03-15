@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE books SET cover_image = $1, cover_image_content_type = $2, cover_updated_at = NOW() WHERE book_id = $3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bytea",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "6dcb687add9b6ac2de58fd8d92d3074cff09a44cdecd4b4160c0d7b1551dd0e3"
+}
