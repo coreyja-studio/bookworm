@@ -1188,7 +1188,7 @@ async fn library_shows_reread_badge_for_multiple_reads() {
 //
 // These tests define the expected behavior for:
 //   - GET /books/{book_id}/cover — serve BYTEA from DB, fetch-and-cache cover_url, or 404
-//   - Cache-Control: public, max-age=86400 on all successful cover responses
+//   - Cache-Control: no-store on all successful cover responses
 //   - All three cover display locations (home, library, detail) use the /cover endpoint
 //     instead of raw external URLs
 //   - has_cover flag in queries replaces direct cover_url nullable checks
@@ -1266,8 +1266,8 @@ async fn cover_endpoint_returns_200_for_stored_cover_image() {
 
 #[tokio::test]
 async fn cover_endpoint_includes_cache_control_header() {
-    // A successful cover response must include Cache-Control: public, max-age=86400
-    // regardless of whether the image came from DB or external URL.
+    // A successful cover response must include Cache-Control: no-store
+    // so that re-uploaded covers are immediately visible.
     //
     // This test requires the same columns and route as the previous test.
     use axum::http::{Request, StatusCode};
@@ -1323,13 +1323,9 @@ async fn cover_endpoint_includes_cache_control_header() {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
 
-    assert!(
-        cache_control.contains("public"),
-        "Cover response Cache-Control should include 'public', got: {cache_control}"
-    );
-    assert!(
-        cache_control.contains("max-age=86400"),
-        "Cover response Cache-Control should include 'max-age=86400', got: {cache_control}"
+    assert_eq!(
+        cache_control, "no-store",
+        "Cover response Cache-Control should be 'no-store', got: {cache_control}"
     );
 }
 
@@ -1402,7 +1398,7 @@ async fn cover_endpoint_fetches_and_caches_external_url() {
     // GET /books/{book_id}/cover when cover_image is NULL but cover_url is set should:
     //   1. Fetch the external URL
     //   2. Store the bytes and content type in cover_image / cover_image_content_type
-    //   3. Return the image with 200 and Cache-Control: public, max-age=86400
+    //   3. Return the image with 200 and Cache-Control: no-store
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
