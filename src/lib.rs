@@ -235,7 +235,7 @@ struct EditBookInput {
 // ---------------------------------------------------------------------------
 
 async fn home() -> Redirect {
-    Redirect::to("/stats")
+    Redirect::to("/log")
 }
 
 #[allow(clippy::too_many_lines)]
