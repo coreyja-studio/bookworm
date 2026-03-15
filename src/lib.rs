@@ -1103,11 +1103,11 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                     }
                 }
                 form method="post" action=(format!("/books/{}/upload-cover", book_id))
-                    enctype="multipart/form-data" class="mt-2 flex gap-2 items-center" {
+                    enctype="multipart/form-data" class="mt-2 space-y-2" {
                     input type="file" name="cover" accept="image/*" required
-                        class="flex-1 text-sm text-subtext file:mr-2 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-accent-bg-purple file:text-accent-purple hover:file:bg-accent-bg-orange";
+                        class="block w-full text-sm text-subtext file:mr-2 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-accent-bg-purple file:text-accent-purple hover:file:bg-accent-bg-orange";
                     button type="submit"
-                        class="bg-accent-orange text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-accent-red transition-colors btn-primary" {
+                        class="w-full bg-accent-orange text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-accent-red transition-colors btn-primary" {
                         "Upload"
                     }
                 }
@@ -1310,6 +1310,9 @@ async fn upload_cover(
         return redirect;
     };
 
+    // Read EXIF orientation before decoding (EXIF is in the raw bytes)
+    let orientation = exif_orientation(&raw_bytes);
+
     // Decode the image (handles JPEG, PNG, GIF, WebP, etc.)
     // iOS converts HEIC to JPEG when using accept="image/*", but we normalize anyway
     let img = match image::load_from_memory(&raw_bytes) {
@@ -1319,6 +1322,9 @@ async fn upload_cover(
             return redirect;
         }
     };
+
+    // Apply EXIF orientation so the image displays correctly
+    let img = apply_orientation(img, orientation);
 
     // Re-encode as JPEG for consistent storage
     let mut jpeg_bytes: Vec<u8> = Vec::new();
@@ -1341,6 +1347,30 @@ async fn upload_cover(
     }
 
     redirect
+}
+
+fn exif_orientation(raw_bytes: &[u8]) -> u32 {
+    let reader = exif::Reader::new();
+    let Ok(exif_data) = reader.read_from_container(&mut std::io::Cursor::new(raw_bytes)) else {
+        return 1;
+    };
+    exif_data
+        .get_field(exif::Tag::Orientation, exif::In::PRIMARY)
+        .and_then(|f| f.value.get_uint(0))
+        .unwrap_or(1)
+}
+
+fn apply_orientation(img: image::DynamicImage, orientation: u32) -> image::DynamicImage {
+    match orientation {
+        2 => img.fliph(),
+        3 => img.rotate180(),
+        4 => img.flipv(),
+        5 => img.rotate90().fliph(),
+        6 => img.rotate90(),
+        7 => img.rotate270().fliph(),
+        8 => img.rotate270(),
+        _ => img,
+    }
 }
 
 async fn book_read_again(

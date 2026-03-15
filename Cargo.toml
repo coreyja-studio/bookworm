@@ -45,6 +45,7 @@ chrono = { version = "0.4", default-features = false, features = ["serde", "cloc
 urlencoding = "2"
 color-eyre = "0.6"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp"] }
+kamadak-exif = "0.5"
 futures = "0.3"
 
 [dev-dependencies]
