@@ -447,9 +447,9 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
     let offset = i64::from(page) * 50;
     let search = params.q.clone();
 
-    let sort_alpha = params.sort.as_deref() == Some("alpha");
+    let sort_recent = params.sort.as_deref() == Some("recent");
 
-    let rows = if sort_alpha {
+    let rows = if sort_recent {
         sqlx::query_as!(
             LibraryEntry,
             r#"SELECT b.book_id, b.title, b.author,
@@ -461,7 +461,7 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
                WHERE r.deleted_at IS NULL
                  AND ($1::TEXT IS NULL OR b.title ILIKE '%' || $1 || '%' OR b.author ILIKE '%' || $1 || '%')
                GROUP BY b.book_id, b.title, b.author
-               ORDER BY LOWER(b.title) ASC
+               ORDER BY MAX(r.read_date) DESC, MAX(r.created_at) DESC
                LIMIT 50 OFFSET $2"#,
             search.as_deref(),
             offset
@@ -480,7 +480,7 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
                WHERE r.deleted_at IS NULL
                  AND ($1::TEXT IS NULL OR b.title ILIKE '%' || $1 || '%' OR b.author ILIKE '%' || $1 || '%')
                GROUP BY b.book_id, b.title, b.author
-               ORDER BY MAX(r.read_date) DESC, MAX(r.created_at) DESC
+               ORDER BY LOWER(b.title) ASC
                LIMIT 50 OFFSET $2"#,
             search.as_deref(),
             offset
@@ -528,18 +528,17 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
             input type="text" name="q" value=(params.q.as_deref().unwrap_or(""))
                 placeholder="🔍 Search books..."
                 class="w-full bg-white rounded-xl border border-card-border px-4 py-3 focus:ring-2 focus:ring-accent-orange focus:outline-none";
-            @if sort_alpha {
-                input type="hidden" name="sort" value="alpha";
+            @if sort_recent {
+                input type="hidden" name="sort" value="recent";
             }
         }
 
         div class="flex justify-end mb-3" {
-            @if sort_alpha {
-                @let q_param = params.q.as_deref().map_or(String::new(), |q| format!("&q={}", urlencoding::encode(q)));
-                a href=(format!("/library?sort=recent{q_param}")) class="text-sm text-accent-orange font-bold" { "Sort: A→Z ▼" }
-            } @else {
-                @let q_param = params.q.as_deref().map_or(String::new(), |q| format!("&q={}", urlencoding::encode(q)));
+            @let q_param = params.q.as_deref().map_or(String::new(), |q| format!("&q={}", urlencoding::encode(q)));
+            @if sort_recent {
                 a href=(format!("/library?sort=alpha{q_param}")) class="text-sm text-accent-orange font-bold" { "Sort: Recent ▼" }
+            } @else {
+                a href=(format!("/library?sort=recent{q_param}")) class="text-sm text-accent-orange font-bold" { "Sort: A→Z ▼" }
             }
         }
 
@@ -591,7 +590,7 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
                 use std::fmt::Write;
                 let mut s = String::new();
                 if let Some(q) = params.q.as_deref() { let _ = write!(s, "&q={}", urlencoding::encode(q)); }
-                if sort_alpha { s.push_str("&sort=alpha"); }
+                if sort_recent { s.push_str("&sort=recent"); }
                 s
             };
             @if has_prev {
