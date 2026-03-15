@@ -1222,7 +1222,7 @@ async fn book_cover(
             StatusCode::OK,
             [
                 (header::CONTENT_TYPE, content_type),
-                (header::CACHE_CONTROL, "public, max-age=86400".to_string()),
+                (header::CACHE_CONTROL, "no-store".to_string()),
             ],
             image_bytes,
         )
