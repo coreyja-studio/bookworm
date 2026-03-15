@@ -112,7 +112,7 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .route("/log/reread", post(log_reread))
         .route("/library/reread", post(library_reread))
         .route("/library/delete", post(library_delete))
-        .route("/history", get(history_redirect))
+        .route("/history", get(history))
         .route("/progress", get(progress))
         .route("/stats", get(stats))
         .route("/api/isbn/{isbn}", get(isbn_lookup))
@@ -171,6 +171,11 @@ struct LibraryParams {
 #[derive(Deserialize)]
 struct ProgressParams {
     mode: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct HistoryParams {
+    page: Option<u32>,
 }
 
 #[allow(dead_code)]
@@ -581,8 +586,109 @@ async fn library_delete(State(state): State<AppState>, Form(input): Form<DeleteI
     Redirect::to("/library?deleted=true")
 }
 
-async fn history_redirect() -> Redirect {
-    Redirect::permanent("/library")
+async fn history(State(state): State<AppState>, Query(params): Query<HistoryParams>) -> Markup {
+    let page = params.page.unwrap_or(0);
+    let per_page: i64 = 50;
+    let offset = i64::from(page) * per_page;
+
+    let rows = sqlx::query_as!(
+        ReadEntry,
+        r#"SELECT b.book_id, b.title, b.author, r.read_date,
+               (b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as "has_cover!"
+           FROM reads r
+           JOIN books b ON b.book_id = r.book_id
+           WHERE r.deleted_at IS NULL
+           ORDER BY r.read_date DESC, r.created_at DESC
+           LIMIT $1 OFFSET $2"#,
+        per_page,
+        offset
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_else(|e| {
+        tracing::error!("Failed to fetch history: {e}");
+        Vec::new()
+    });
+
+    let total_reads: i64 =
+        sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!" FROM reads WHERE deleted_at IS NULL"#)
+            .fetch_one(&state.db)
+            .await
+            .unwrap_or(0);
+
+    let unique_books: i64 = sqlx::query_scalar!(
+        r#"SELECT COUNT(DISTINCT book_id) as "count!" FROM reads WHERE deleted_at IS NULL"#
+    )
+    .fetch_one(&state.db)
+    .await
+    .unwrap_or(0);
+
+    let has_next = rows.len() as i64 == per_page;
+    let has_prev = page > 0;
+    let colors = [
+        "red", "orange", "yellow", "green", "blue", "purple", "pink", "teal",
+    ];
+
+    // Group reads by date for visual clarity, tracking a global index for colors
+    let mut grouped: Vec<(chrono::NaiveDate, Vec<(usize, &ReadEntry)>)> = Vec::new();
+    for (i, row) in rows.iter().enumerate() {
+        if let Some(last) = grouped.last_mut() {
+            if last.0 == row.read_date {
+                last.1.push((i, row));
+                continue;
+            }
+        }
+        grouped.push((row.read_date, vec![(i, row)]));
+    }
+
+    let content = html! {
+        @if rows.is_empty() {
+            div class="text-center text-subtext py-12" {
+                "No reads yet — go log some! 📚"
+            }
+        } @else {
+            div class="space-y-2" {
+                @for (date, reads) in &grouped {
+                    div class="text-subtext text-sm font-bold mt-4 first:mt-0" {
+                        (date.format("%A, %B %-d, %Y"))
+                    }
+                    @for (i, row) in reads {
+                        @let color = colors[i % colors.len()];
+                        div class="bg-white rounded-xl border border-card-border p-4" {
+                            a href=(format!("/books/{}", row.book_id)) class="flex items-center gap-3" {
+                                @if row.has_cover {
+                                    img src=(format!("/books/{}/cover", row.book_id)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0";
+                                } @else {
+                                    span class=(format!("bg-accent-{color} text-white rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold shrink-0")) {
+                                        "📖"
+                                    }
+                                }
+                                div class="flex-1 min-w-0" {
+                                    div class="font-bold line-clamp-1" { (row.title) }
+                                    @if !row.author.is_empty() {
+                                        div class="text-subtext text-sm" { "by " (row.author) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        div class="flex justify-between mt-6" {
+            @if has_prev {
+                a href=(format!("/history?page={}", page - 1)) class="text-accent-orange font-bold" { "← Newer" }
+            } @else {
+                span {}
+            }
+            @if has_next {
+                a href=(format!("/history?page={}", page + 1)) class="text-accent-orange font-bold" { "Older →" }
+            }
+        }
+    };
+
+    layout("Reading History", "history", &content, total_reads, unique_books)
 }
 
 #[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
@@ -1905,6 +2011,7 @@ fn nav_header(active_tab: &str, total_reads: i64, unique_books: i64) -> Markup {
     let tabs = [
         ("add", "📚", "Add", "/log"),
         ("library", "📋", "Library", "/library"),
+        ("history", "🕐", "History", "/history"),
         ("progress", "🎯", "Progress", "/progress"),
         ("stats", "⭐", "Stats", "/stats"),
     ];
@@ -1935,6 +2042,7 @@ fn nav_header(active_tab: &str, total_reads: i64, unique_books: i64) -> Markup {
                         @let tab_color = match *name {
                             "add" => "red",
                             "library" => "blue",
+                            "history" => "purple",
                             "progress" => "green",
                             "stats" => "yellow",
                             _ => "orange",
