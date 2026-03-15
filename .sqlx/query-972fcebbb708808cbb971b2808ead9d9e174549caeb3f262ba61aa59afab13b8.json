@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT b.book_id, b.title, b.author,\n               COUNT(r.read_id) as \"read_count!\",\n               MAX(r.read_date) as \"last_read_date!\",\n               BOOL_OR(b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as \"has_cover!\"\n           FROM books b\n           JOIN reads r ON r.book_id = b.book_id\n           WHERE r.deleted_at IS NULL\n             AND ($1::TEXT IS NULL OR b.title ILIKE '%' || $1 || '%' OR b.author ILIKE '%' || $1 || '%')\n           GROUP BY b.book_id, b.title, b.author\n           ORDER BY MAX(r.read_date) DESC, MAX(r.created_at) DESC\n           LIMIT 50 OFFSET $2",
+  "query": "SELECT b.book_id, b.title, b.author,\n                   COUNT(r.read_id) as \"read_count!\",\n                   MAX(r.read_date) as \"last_read_date!\",\n                   BOOL_OR(b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as \"has_cover!\"\n               FROM books b\n               JOIN reads r ON r.book_id = b.book_id\n               WHERE r.deleted_at IS NULL\n                 AND ($1::TEXT IS NULL OR b.title ILIKE '%' || $1 || '%' OR b.author ILIKE '%' || $1 || '%')\n               GROUP BY b.book_id, b.title, b.author\n               ORDER BY LOWER(b.title) ASC\n               LIMIT 50 OFFSET $2",
   "describe": {
     "columns": [
       {
@@ -49,5 +49,5 @@
       null
     ]
   },
-  "hash": "4d4614f1d4f1dffaf1b48d4248d6073609c9757c23d88e91a755344f58f9be22"
+  "hash": "972fcebbb708808cbb971b2808ead9d9e174549caeb3f262ba61aa59afab13b8"
 }
