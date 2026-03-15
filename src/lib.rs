@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use axum::{
-    extract::{Form, Path, Query, State},
+    extract::{Form, Multipart, Path, Query, State},
     http::{StatusCode, header},
     response::{IntoResponse, Redirect},
     routing::{get, post},
@@ -121,6 +121,7 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .route("/books/{book_id}/edit", post(edit_book))
         .route("/books/{book_id}/update-isbn", post(update_book_isbn))
         .route("/books/{book_id}/cover", get(book_cover))
+        .route("/books/{book_id}/upload-cover", post(upload_cover))
         .route("/books/{book_id}/merge", get(merge_form).post(merge_books))
         .route("/manifest.webmanifest", get(manifest))
         .route("/icon.svg", get(icon_svg))
@@ -1094,6 +1095,24 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                 }
             }
 
+            // Upload cover photo
+            div class="mt-4 border-t border-card-border pt-4" {
+                div class="flex justify-between items-center" {
+                    h3 class="font-bold text-sm" {
+                        @if book.has_cover { "Replace Cover Photo" } @else { "Add Cover Photo" }
+                    }
+                }
+                form method="post" action=(format!("/books/{}/upload-cover", book_id))
+                    enctype="multipart/form-data" class="mt-2 flex gap-2 items-center" {
+                    input type="file" name="cover" accept="image/*" required
+                        class="flex-1 text-sm text-subtext file:mr-2 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-accent-bg-purple file:text-accent-purple hover:file:bg-accent-bg-orange";
+                    button type="submit"
+                        class="bg-accent-orange text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-accent-red transition-colors btn-primary" {
+                        "Upload"
+                    }
+                }
+            }
+
             a href=(format!("/books/{}/merge", book_id))
                 class="block text-center text-subtext text-sm mt-2 hover:text-accent-orange" {
                 "Merge with another book"
@@ -1257,6 +1276,71 @@ async fn book_cover(
         image_bytes,
     )
         .into_response()
+}
+
+async fn upload_cover(
+    State(state): State<AppState>,
+    Path(book_id): Path<uuid::Uuid>,
+    mut multipart: Multipart,
+) -> Redirect {
+    let redirect = Redirect::to(&format!("/books/{book_id}"));
+
+    let mut image_data: Option<Vec<u8>> = None;
+
+    while let Ok(Some(field)) = multipart.next_field().await {
+        if field.name() == Some("cover") {
+            let bytes = match field.bytes().await {
+                Ok(b) => b,
+                Err(e) => {
+                    tracing::error!("Failed to read upload: {e}");
+                    return redirect;
+                }
+            };
+
+            if bytes.is_empty() {
+                return redirect;
+            }
+
+            image_data = Some(bytes.to_vec());
+            break;
+        }
+    }
+
+    let Some(raw_bytes) = image_data else {
+        return redirect;
+    };
+
+    // Decode the image (handles JPEG, PNG, GIF, WebP, etc.)
+    // iOS converts HEIC to JPEG when using accept="image/*", but we normalize anyway
+    let img = match image::load_from_memory(&raw_bytes) {
+        Ok(img) => img,
+        Err(e) => {
+            tracing::error!("Failed to decode uploaded image: {e}");
+            return redirect;
+        }
+    };
+
+    // Re-encode as JPEG for consistent storage
+    let mut jpeg_bytes: Vec<u8> = Vec::new();
+    let mut cursor = std::io::Cursor::new(&mut jpeg_bytes);
+    if let Err(e) = img.write_to(&mut cursor, image::ImageFormat::Jpeg) {
+        tracing::error!("Failed to encode image as JPEG: {e}");
+        return redirect;
+    }
+
+    if let Err(e) = sqlx::query!(
+        "UPDATE books SET cover_image = $1, cover_image_content_type = $2 WHERE book_id = $3",
+        &jpeg_bytes,
+        "image/jpeg",
+        book_id
+    )
+    .execute(&state.db)
+    .await
+    {
+        tracing::error!("Failed to save uploaded cover: {e}");
+    }
+
+    redirect
 }
 
 async fn book_read_again(
