@@ -77,6 +77,14 @@ pub async fn setup_db_pool() -> cja::Result<PgPool> {
     let database_url = std::env::var("DATABASE_URL").wrap_err("DATABASE_URL must be set")?;
     let pool = PgPoolOptions::new()
         .max_connections(5)
+        .after_connect(|conn, _meta| {
+            Box::pin(async move {
+                sqlx::query("SET timezone = 'America/New_York'")
+                    .execute(&mut *conn)
+                    .await?;
+                Ok(())
+            })
+        })
         .connect(&database_url)
         .await?;
 
