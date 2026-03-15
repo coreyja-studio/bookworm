@@ -2,7 +2,7 @@
   "name": "Bookworm",
   "short_name": "Bookworm",
   "description": "Track reads for the 1,000 Books Before Kindergarten challenge",
-  "start_url": "/stats",
+  "start_url": "/log",
   "display": "standalone",
   "background_color": "#FFF6EC",
   "theme_color": "#3D2C1E",
