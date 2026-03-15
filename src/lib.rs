@@ -303,7 +303,7 @@ async fn log_form(
                 input type="hidden" name="isbn" id="isbn" value="";
                 input type="hidden" name="cover_url" id="cover_url" value="";
                 button type="submit"
-                    class="bg-gradient-to-r from-accent-orange to-accent-red text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow w-full" {
+                    class="bg-gradient-to-r from-accent-orange to-accent-red text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition active:scale-95 w-full btn-primary" {
                     "Log Book #" (total_reads + 1)
                 }
             }
@@ -1068,7 +1068,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
             // Read Again button
             form method="post" action=(format!("/books/{}/read-again", book_id)) class="mt-4" {
                 button type="submit"
-                    class="bg-gradient-to-r from-accent-orange to-accent-red text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition-shadow w-full" {
+                    class="bg-gradient-to-r from-accent-orange to-accent-red text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition active:scale-95 w-full btn-primary" {
                     "Read Again 📖"
                 }
             }
@@ -1708,6 +1708,9 @@ fn layout(
                     (PreEscaped("@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }"))
                     (PreEscaped(".toast { animation: slideUp 0.3s ease-out, fadeOut 0.3s ease-in 2.7s forwards; }"))
                 }
+                script type="module" {
+                    (PreEscaped(haptics_script()))
+                }
             }
             body class="bg-cream text-ink font-body font-semibold min-h-screen flex flex-col" {
                 (nav_header(active_tab, total_reads, unique_books))
@@ -1720,6 +1723,18 @@ fn layout(
             }
         }
     }
+}
+
+fn haptics_script() -> &'static str {
+    r"
+import { WebHaptics } from 'https://cdn.jsdelivr.net/npm/web-haptics/dist/index.mjs';
+const haptics = new WebHaptics();
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.btn-primary').forEach(btn => {
+    btn.addEventListener('touchstart', () => { haptics.trigger('medium'); }, { passive: true });
+  });
+});
+"
 }
 
 fn tailwind_config() -> &'static str {
