@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use axum::{
-    extract::{Form, Multipart, Path, Query, State},
+    extract::{DefaultBodyLimit, Form, Multipart, Path, Query, State},
     http::{StatusCode, header},
     response::{IntoResponse, Redirect},
     routing::{get, post},
@@ -125,6 +125,7 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .route("/books/{book_id}/merge", get(merge_form).post(merge_books))
         .route("/manifest.webmanifest", get(manifest))
         .route("/icon.svg", get(icon_svg))
+        .layer(DefaultBodyLimit::max(20 * 1024 * 1024))
         .with_state(app_state)
 }
 
