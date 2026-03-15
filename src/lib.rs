@@ -529,10 +529,6 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
                                     input type="hidden" name="book_id" value=(row.book_id);
                                     button type="submit" class="text-accent-orange text-sm font-bold hover:underline" { "Re-read" }
                                 }
-                                form method="post" action="/library/delete" onsubmit="return confirm('Remove this book from your library?')" {
-                                    input type="hidden" name="book_id" value=(row.book_id);
-                                    button type="submit" class="text-subtext hover:text-accent-red" { "🗑️" }
-                                }
                             }
                         }
                     }
@@ -1166,6 +1162,17 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Delete book
+        div class="mt-8 pt-6 border-t border-card-border" {
+            form method="post" action="/library/delete" onsubmit="return confirm('Remove this book from your library?')" {
+                input type="hidden" name="book_id" value=(book_id);
+                button type="submit"
+                    class="w-full text-accent-red text-sm hover:underline" {
+                    "Remove from library"
                 }
             }
         }
