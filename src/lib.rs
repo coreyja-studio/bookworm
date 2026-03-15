@@ -594,6 +594,7 @@ async fn library_delete(State(state): State<AppState>, Form(input): Form<DeleteI
     Redirect::to("/library?deleted=true")
 }
 
+#[allow(clippy::too_many_lines)]
 async fn history(State(state): State<AppState>, Query(params): Query<HistoryParams>) -> Markup {
     let page = params.page.unwrap_or(0);
     let per_page: i64 = 50;
@@ -631,7 +632,7 @@ async fn history(State(state): State<AppState>, Query(params): Query<HistoryPara
     .await
     .unwrap_or(0);
 
-    let has_next = rows.len() as i64 == per_page;
+    let has_next = i64::try_from(rows.len()).unwrap_or(0) == per_page;
     let has_prev = page > 0;
     let colors = [
         "red", "orange", "yellow", "green", "blue", "purple", "pink", "teal",
@@ -640,11 +641,11 @@ async fn history(State(state): State<AppState>, Query(params): Query<HistoryPara
     // Group reads by date for visual clarity, tracking a global index for colors
     let mut grouped: Vec<(chrono::NaiveDate, Vec<(usize, &ReadEntry)>)> = Vec::new();
     for (i, row) in rows.iter().enumerate() {
-        if let Some(last) = grouped.last_mut() {
-            if last.0 == row.read_date {
-                last.1.push((i, row));
-                continue;
-            }
+        if let Some(last) = grouped.last_mut()
+            && last.0 == row.read_date
+        {
+            last.1.push((i, row));
+            continue;
         }
         grouped.push((row.read_date, vec![(i, row)]));
     }
@@ -696,7 +697,13 @@ async fn history(State(state): State<AppState>, Query(params): Query<HistoryPara
         }
     };
 
-    layout("Reading History", "history", &content, total_reads, unique_books)
+    layout(
+        "Reading History",
+        "history",
+        &content,
+        total_reads,
+        unique_books,
+    )
 }
 
 #[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
