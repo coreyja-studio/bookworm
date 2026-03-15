@@ -727,10 +727,10 @@ async fn progress_shows_kindergarten_countdown() {
     );
 }
 
-// -- /history → /library redirect (308) --
+// -- /history page --
 
 #[tokio::test]
-async fn history_redirects_to_library() {
+async fn history_returns_200() {
     use axum::http::{Request, StatusCode};
     use tower::ServiceExt;
 
@@ -747,18 +747,8 @@ async fn history_redirects_to_library() {
 
     assert_eq!(
         response.status(),
-        StatusCode::PERMANENT_REDIRECT,
-        "GET /history should return 308 Permanent Redirect to /library"
-    );
-
-    let location = response
-        .headers()
-        .get("location")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    assert!(
-        location.contains("/library"),
-        "Redirect Location should point to /library, got: {location}"
+        StatusCode::OK,
+        "GET /history should return 200 OK"
     );
 }
 
