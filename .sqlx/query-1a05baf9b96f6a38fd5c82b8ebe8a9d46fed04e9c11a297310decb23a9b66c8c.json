@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(DISTINCT r.book_id) as \"count!\"\n           FROM reads r\n           WHERE r.read_date >= CURRENT_DATE - INTERVAL '7 days'\n             AND r.deleted_at IS NULL\n             AND NOT EXISTS (\n                 SELECT 1 FROM reads r2\n                 WHERE r2.book_id = r.book_id\n                   AND r2.read_date < CURRENT_DATE - INTERVAL '7 days'\n                   AND r2.deleted_at IS NULL\n             )",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "1a05baf9b96f6a38fd5c82b8ebe8a9d46fed04e9c11a297310decb23a9b66c8c"
+}

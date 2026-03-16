@@ -1,2 +1,4 @@
 [env]
 DATABASE_URL = "postgres:///bookworm_dev"
+# RESEND_API_KEY = "re_test_xxx"  # Set for local testing
+# WEEKLY_EMAIL_RECIPIENTS = "test@example.com"  # Set for local testing

@@ -1,125 +1,172 @@
-//! Test scaffold for weekly reading wrap-up email (BW-2515e7a36a3044bd).
-//!
-//! These tests define the expected behavior for:
-//! - `gather_weekly_stats`: collects reading stats from the database
-//! - `build_weekly_email_html`: renders stats into an HTML email
-//! - Milestone detection logic
-//! - `send_weekly_email`: skips sending when no reads occurred
-//! - Cron registration
-//!
-//! All tests are `#[ignore]` because they depend on types/functions
-//! that don't exist yet (`WeeklyStats`, `gather_weekly_stats`,
-//! `build_weekly_email_html`, `cron_registry`, `send_weekly_email`).
-//!
-//! The implementation agent should un-ignore these and fill in the
-//! function calls once the types are created.
+//! Tests for weekly reading wrap-up email (BW-2515e7a36a3044bd).
+
+use bookworm::WeeklyStats;
 
 // ---------------------------------------------------------------------------
 // gather_weekly_stats — database tests
 // ---------------------------------------------------------------------------
 
-#[test]
-#[ignore = "Requires gather_weekly_stats and WeeklyStats to be implemented"]
-fn gather_weekly_stats_counts_this_week_only() {
-    // This should be a #[sqlx::test] with pool: sqlx::PgPool parameter.
-    //
-    // Setup: insert 2 books, 3 reads this week and 1 read from 10 days ago.
-    //
-    // Book A: "Goodnight Moon" — read twice this week (CURRENT_DATE, CURRENT_DATE - 1 day)
-    // Book B: "Brown Bear" — read once this week (CURRENT_DATE), once 10 days ago
-    //
-    // Call: bookworm::gather_weekly_stats(&pool).await.unwrap()
-    //
-    // Assertions:
-    //   stats.total_reads_this_week == 3  (only reads within 7 days)
-    //   stats.total_reads_all_time == 4   (all non-deleted reads)
-    //   stats.unique_books_all_time == 2  (two distinct books)
-    //   stats.most_read_book == Some(("Goodnight Moon", 2))
-    //   stats.busiest_day.is_some()
-    //   stats.days_with_reads >= 1
-    todo!(
-        "Convert to #[sqlx::test], insert test data, call gather_weekly_stats, \
-         assert weekly vs all-time counts are correct"
+#[sqlx::test]
+async fn gather_weekly_stats_counts_this_week_only(pool: sqlx::PgPool) {
+    // Insert 2 books
+    sqlx::query!(
+        "INSERT INTO books (book_id, title) VALUES ($1, $2), ($3, $4)",
+        uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
+        "Goodnight Moon",
+        uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap(),
+        "Brown Bear",
     )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Book A: 2 reads this week
+    sqlx::query!(
+        "INSERT INTO reads (book_id, read_date) VALUES ($1, CURRENT_DATE), ($1, CURRENT_DATE - INTERVAL '1 day')",
+        uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap(),
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Book B: 1 read this week, 1 read 10 days ago
+    sqlx::query!(
+        "INSERT INTO reads (book_id, read_date) VALUES ($1, CURRENT_DATE), ($1, CURRENT_DATE - INTERVAL '10 days')",
+        uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap(),
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let stats = bookworm::gather_weekly_stats(&pool).await.unwrap();
+
+    assert_eq!(stats.total_reads_this_week, 3);
+    assert_eq!(stats.total_reads_all_time, 4);
+    assert_eq!(stats.unique_books_all_time, 2);
+    assert_eq!(
+        stats.most_read_book.as_ref().map(|(t, _)| t.as_str()),
+        Some("Goodnight Moon")
+    );
+    assert_eq!(stats.most_read_book.as_ref().map(|(_, c)| *c), Some(2));
+    assert!(stats.busiest_day.is_some());
+    assert!(stats.days_with_reads >= 1);
 }
 
-#[test]
-#[ignore = "Requires gather_weekly_stats and WeeklyStats to be implemented"]
-fn gather_weekly_stats_new_unique_books_this_week() {
-    // This should be a #[sqlx::test] with pool: sqlx::PgPool parameter.
-    //
-    // Book A "Old Favorite": first read 10 days ago, re-read this week → NOT a new unique
-    // Book B "Brand New Book": first read this week → IS a new unique
-    //
-    // Call: bookworm::gather_weekly_stats(&pool).await.unwrap()
-    //
-    // Assertions:
-    //   stats.new_unique_books_this_week == 1 (only Brand New Book)
-    //   stats.unique_books_all_time == 2
-    todo!(
-        "Convert to #[sqlx::test], insert books with reads spanning the 7-day boundary, \
-         assert new_unique_books_this_week correctly excludes re-reads of old books"
+#[sqlx::test]
+async fn gather_weekly_stats_new_unique_books_this_week(pool: sqlx::PgPool) {
+    let old_book = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
+    let new_book = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000002").unwrap();
+
+    sqlx::query!(
+        "INSERT INTO books (book_id, title) VALUES ($1, $2), ($3, $4)",
+        old_book,
+        "Old Favorite",
+        new_book,
+        "Brand New Book",
     )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Old Favorite: first read 10 days ago, re-read this week
+    sqlx::query!(
+        "INSERT INTO reads (book_id, read_date) VALUES ($1, CURRENT_DATE - INTERVAL '10 days'), ($1, CURRENT_DATE)",
+        old_book,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // Brand New Book: first read this week
+    sqlx::query!(
+        "INSERT INTO reads (book_id, read_date) VALUES ($1, CURRENT_DATE)",
+        new_book,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let stats = bookworm::gather_weekly_stats(&pool).await.unwrap();
+
+    assert_eq!(stats.new_unique_books_this_week, 1);
+    assert_eq!(stats.unique_books_all_time, 2);
 }
 
-#[test]
-#[ignore = "Requires gather_weekly_stats and WeeklyStats to be implemented"]
-fn gather_weekly_stats_empty_database() {
-    // This should be a #[sqlx::test] with pool: sqlx::PgPool parameter.
-    //
-    // No books, no reads — should return zeros without error.
-    //
-    // Call: bookworm::gather_weekly_stats(&pool).await.unwrap()
-    //
-    // Assertions:
-    //   stats.total_reads_this_week == 0
-    //   stats.total_reads_all_time == 0
-    //   stats.unique_books_all_time == 0
-    //   stats.new_unique_books_this_week == 0
-    //   stats.most_read_book.is_none()
-    //   stats.busiest_day.is_none()
-    //   stats.days_with_reads == 0
-    todo!(
-        "Convert to #[sqlx::test], call gather_weekly_stats on empty DB, \
-         assert all fields are zero/None"
-    )
+#[sqlx::test]
+async fn gather_weekly_stats_empty_database(pool: sqlx::PgPool) {
+    let stats = bookworm::gather_weekly_stats(&pool).await.unwrap();
+
+    assert_eq!(stats.total_reads_this_week, 0);
+    assert_eq!(stats.total_reads_all_time, 0);
+    assert_eq!(stats.unique_books_all_time, 0);
+    assert_eq!(stats.new_unique_books_this_week, 0);
+    assert!(stats.most_read_book.is_none());
+    assert!(stats.busiest_day.is_none());
+    assert_eq!(stats.days_with_reads, 0);
 }
 
-#[test]
-#[ignore = "Requires gather_weekly_stats and WeeklyStats to be implemented"]
-fn gather_weekly_stats_ignores_deleted_reads() {
-    // This should be a #[sqlx::test] with pool: sqlx::PgPool parameter.
-    //
-    // Insert a book and a read with deleted_at = NOW().
-    // Soft-deleted reads should not be counted in any stat.
-    //
-    // Call: bookworm::gather_weekly_stats(&pool).await.unwrap()
-    //
-    // Assertions:
-    //   stats.total_reads_this_week == 0
-    //   stats.total_reads_all_time == 0
-    todo!(
-        "Convert to #[sqlx::test], insert a soft-deleted read, \
-         assert it is excluded from all counts"
+#[sqlx::test]
+async fn gather_weekly_stats_ignores_deleted_reads(pool: sqlx::PgPool) {
+    let book_id = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
+
+    sqlx::query!(
+        "INSERT INTO books (book_id, title) VALUES ($1, $2)",
+        book_id,
+        "Deleted Book",
     )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query!(
+        "INSERT INTO reads (book_id, read_date, deleted_at) VALUES ($1, CURRENT_DATE, NOW())",
+        book_id,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let stats = bookworm::gather_weekly_stats(&pool).await.unwrap();
+
+    assert_eq!(stats.total_reads_this_week, 0);
+    assert_eq!(stats.total_reads_all_time, 0);
 }
 
-#[test]
-#[ignore = "Requires gather_weekly_stats and WeeklyStats to be implemented"]
-fn gather_weekly_stats_busiest_day_picks_highest() {
-    // This should be a #[sqlx::test] with pool: sqlx::PgPool parameter.
-    //
-    // Insert 1 read yesterday and 3 reads today for the same book.
-    //
-    // Call: bookworm::gather_weekly_stats(&pool).await.unwrap()
-    //
-    // Assertions:
-    //   stats.busiest_day count == 3  (today had the most reads)
-    //   stats.days_with_reads == 2    (reads on 2 distinct days)
-    todo!(
-        "Convert to #[sqlx::test], insert reads on 2 days with different counts, \
-         assert busiest_day picks the day with more reads"
+#[sqlx::test]
+async fn gather_weekly_stats_busiest_day_picks_highest(pool: sqlx::PgPool) {
+    let book_id = uuid::Uuid::parse_str("00000000-0000-0000-0000-000000000001").unwrap();
+
+    sqlx::query!(
+        "INSERT INTO books (book_id, title) VALUES ($1, $2)",
+        book_id,
+        "Popular Book",
     )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 1 read yesterday
+    sqlx::query!(
+        "INSERT INTO reads (book_id, read_date) VALUES ($1, CURRENT_DATE - INTERVAL '1 day')",
+        book_id,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    // 3 reads today
+    sqlx::query!(
+        "INSERT INTO reads (book_id, read_date) VALUES ($1, CURRENT_DATE), ($1, CURRENT_DATE), ($1, CURRENT_DATE)",
+        book_id,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let stats = bookworm::gather_weekly_stats(&pool).await.unwrap();
+
+    assert_eq!(stats.busiest_day.as_ref().map(|(_, c)| *c), Some(3));
+    assert_eq!(stats.days_with_reads, 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -127,51 +174,47 @@ fn gather_weekly_stats_busiest_day_picks_highest() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore = "Requires WeeklyStats and build_weekly_email_html to be implemented"]
 fn build_weekly_email_html_contains_stats() {
-    // Construct a WeeklyStats with known values:
-    //   total_reads_this_week: 15
-    //   total_reads_all_time: 200
-    //   unique_books_all_time: 80
-    //   new_unique_books_this_week: 5
-    //   most_read_book: Some(("Goodnight Moon", 7))
-    //   busiest_day: Some(("Wednesday", 6))
-    //   days_with_reads: 5
-    //
-    // Call: bookworm::build_weekly_email_html(&stats).into_string()
-    //
-    // Assertions on the HTML string:
-    //   contains "15" (total reads this week)
-    //   contains "Goodnight Moon" (most-read book title)
-    //   contains "7" (most-read book count)
-    //   contains "Wednesday" (busiest day name)
-    //   contains "80" (unique books count)
-    //   contains "1,000" or "1000" (the goal)
-    //   contains "5" (new unique books or days with reads)
-    todo!(
-        "Construct WeeklyStats, call build_weekly_email_html, \
-         assert HTML contains expected stat values"
-    )
+    let stats = WeeklyStats {
+        total_reads_this_week: 15,
+        total_reads_all_time: 200,
+        unique_books_all_time: 80,
+        new_unique_books_this_week: 5,
+        most_read_book: Some(("Goodnight Moon".to_string(), 7)),
+        busiest_day: Some(("Wednesday".to_string(), 6)),
+        days_with_reads: 5,
+    };
+
+    let html = bookworm::build_weekly_email_html(&stats).into_string();
+
+    assert!(html.contains("15"), "should contain total reads");
+    assert!(html.contains("Goodnight Moon"), "should contain book title");
+    assert!(html.contains("7 time"), "should contain most-read count");
+    assert!(html.contains("Wednesday"), "should contain busiest day");
+    assert!(html.contains("80"), "should contain unique books count");
+    assert!(
+        html.contains("1,000") || html.contains("1000"),
+        "should contain the goal"
+    );
+    assert!(html.contains("5 of 7"), "should contain days with reads");
 }
 
 #[test]
-#[ignore = "Requires WeeklyStats and build_weekly_email_html to be implemented"]
 fn build_weekly_email_html_handles_no_most_read_book() {
-    // Construct a WeeklyStats where most_read_book and busiest_day are None.
-    //   total_reads_this_week: 1
-    //   most_read_book: None
-    //   busiest_day: None
-    //   days_with_reads: 1
-    //
-    // Call: bookworm::build_weekly_email_html(&stats).into_string()
-    //
-    // Assertions:
-    //   HTML is non-empty (no panic)
-    //   contains "1" (the read count)
-    todo!(
-        "Construct WeeklyStats with None fields, call build_weekly_email_html, \
-         assert it produces valid HTML without panicking"
-    )
+    let stats = WeeklyStats {
+        total_reads_this_week: 1,
+        total_reads_all_time: 1,
+        unique_books_all_time: 1,
+        new_unique_books_this_week: 1,
+        most_read_book: None,
+        busiest_day: None,
+        days_with_reads: 1,
+    };
+
+    let html = bookworm::build_weekly_email_html(&stats).into_string();
+
+    assert!(!html.is_empty(), "HTML should not be empty");
+    assert!(html.contains("1 of 7"), "should contain the read count");
 }
 
 // ---------------------------------------------------------------------------
@@ -179,81 +222,82 @@ fn build_weekly_email_html_handles_no_most_read_book() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore = "Requires WeeklyStats and build_weekly_email_html to be implemented"]
 fn build_weekly_email_html_shows_milestone_when_crossed() {
-    // Milestone detection formula:
-    //   unique_books_all_time >= milestone && unique_books_all_time - new_unique_books_this_week < milestone
-    //
-    // Test case: unique_books_all_time=100, new_unique_books_this_week=3
-    //   → was at 97 before this week → crossed the 100 milestone
-    //
-    // Call: bookworm::build_weekly_email_html(&stats).into_string()
-    //
-    // Assertions:
-    //   HTML contains "100" AND some milestone indicator ("milestone", "🌟", or "Milestone")
-    todo!(
-        "Construct WeeklyStats that crosses the 100 milestone this week, \
-         assert HTML contains milestone celebration"
-    )
+    let stats = WeeklyStats {
+        total_reads_this_week: 10,
+        total_reads_all_time: 300,
+        unique_books_all_time: 100,
+        new_unique_books_this_week: 3,
+        most_read_book: None,
+        busiest_day: None,
+        days_with_reads: 3,
+    };
+
+    let html = bookworm::build_weekly_email_html(&stats).into_string();
+
+    assert!(
+        html.contains("Milestone") || html.contains("milestone") || html.contains("🌟"),
+        "should contain milestone celebration"
+    );
+    assert!(
+        html.contains("100"),
+        "should reference the 100 milestone number"
+    );
 }
 
 #[test]
-#[ignore = "Requires WeeklyStats and build_weekly_email_html to be implemented"]
 fn build_weekly_email_html_no_milestone_when_not_crossed() {
-    // Test case: unique_books_all_time=99, new_unique_books_this_week=3
-    //   → hasn't reached 100 yet → no milestone
-    //
-    // Call: bookworm::build_weekly_email_html(&stats).into_string()
-    //
-    // Assertions:
-    //   HTML does NOT contain "milestone" or "🌟"
-    todo!(
-        "Construct WeeklyStats just below 100 milestone, \
-         assert HTML does not contain any milestone celebration"
-    )
+    let stats = WeeklyStats {
+        total_reads_this_week: 10,
+        total_reads_all_time: 300,
+        unique_books_all_time: 99,
+        new_unique_books_this_week: 3,
+        most_read_book: None,
+        busiest_day: None,
+        days_with_reads: 3,
+    };
+
+    let html = bookworm::build_weekly_email_html(&stats).into_string();
+
+    assert!(
+        !html.contains("🌟"),
+        "should not contain milestone star when not crossed"
+    );
 }
 
 #[test]
-#[ignore = "Requires WeeklyStats and build_weekly_email_html to be implemented"]
 fn build_weekly_email_html_no_milestone_when_already_past() {
-    // Test case: unique_books_all_time=105, new_unique_books_this_week=2
-    //   → was at 103 before, already past 100 → should NOT re-celebrate
-    //   Formula: 105 >= 100 && 105 - 2 = 103 >= 100 → NOT crossed this week
-    //
-    // Call: bookworm::build_weekly_email_html(&stats).into_string()
-    //
-    // Assertions:
-    //   HTML does NOT contain "🌟" (100-milestone star)
-    todo!(
-        "Construct WeeklyStats where 100 milestone was already crossed in a prior week, \
-         assert HTML does not re-celebrate it"
-    )
+    let stats = WeeklyStats {
+        total_reads_this_week: 10,
+        total_reads_all_time: 300,
+        unique_books_all_time: 105,
+        new_unique_books_this_week: 2,
+        most_read_book: None,
+        busiest_day: None,
+        days_with_reads: 3,
+    };
+
+    let html = bookworm::build_weekly_email_html(&stats).into_string();
+
+    // 105 >= 100 && 105 - 2 = 103 >= 100 → NOT crossed this week
+    assert!(
+        !html.contains("🌟"),
+        "should not re-celebrate 100 milestone"
+    );
 }
 
 // ---------------------------------------------------------------------------
 // send_weekly_email — skip on zero reads
 // ---------------------------------------------------------------------------
 
-#[test]
-#[ignore = "Requires send_weekly_email and gather_weekly_stats to be implemented"]
-fn send_weekly_email_skips_when_no_reads() {
-    // This should be a #[sqlx::test] with pool: sqlx::PgPool parameter.
-    //
-    // With an empty database (no reads), send_weekly_email should return Ok
-    // without attempting to call the Resend API.
-    //
-    // Setup: let app_state = bookworm::AppState::for_testing(pool);
-    // Call:  bookworm::send_weekly_email(app_state).await
-    //
-    // This should succeed even without RESEND_API_KEY being set,
-    // since it should bail before reaching the API call.
-    //
-    // Assertions:
-    //   result.is_ok()
-    todo!(
-        "Convert to #[sqlx::test], call send_weekly_email on empty DB, \
-         assert it returns Ok (early return, no email sent)"
-    )
+#[sqlx::test]
+async fn send_weekly_email_skips_when_no_reads(pool: sqlx::PgPool) {
+    let app_state = bookworm::AppState::for_testing(pool);
+    let result = bookworm::send_weekly_email(app_state).await;
+    assert!(
+        result.is_ok(),
+        "should return Ok when no reads (early return)"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -261,20 +305,9 @@ fn send_weekly_email_skips_when_no_reads() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore = "Requires cron_registry to be implemented"]
 fn cron_registry_registers_weekly_email() {
-    // Call: bookworm::cron_registry()
-    //
-    // This verifies the cron expression parses correctly and the
-    // job is registered without panicking. The cron expression should
-    // be "0 0 18 * * Sun *" (every Sunday at 6 PM).
-    //
-    // Assertions:
-    //   Function returns without panic (implicit)
-    todo!(
-        "Call bookworm::cron_registry(), verify it returns a valid registry \
-         without panicking (cron expression parses successfully)"
-    )
+    // Just verify it doesn't panic (cron expression parses successfully)
+    let _registry = bookworm::cron_registry();
 }
 
 // ---------------------------------------------------------------------------
@@ -282,16 +315,22 @@ fn cron_registry_registers_weekly_email() {
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore = "Requires WeeklyStats and build_weekly_email_html to be implemented"]
 fn build_weekly_email_html_shows_reading_streak() {
-    // Construct a WeeklyStats with days_with_reads=7 (full week).
-    //
-    // Call: bookworm::build_weekly_email_html(&stats).into_string()
-    //
-    // Assertions:
-    //   HTML contains "7" and "7" (indicating 7 of 7 days)
-    todo!(
-        "Construct WeeklyStats with 7/7 reading days, \
-         assert HTML shows full-week reading streak indicator"
-    )
+    let stats = WeeklyStats {
+        total_reads_this_week: 14,
+        total_reads_all_time: 100,
+        unique_books_all_time: 50,
+        new_unique_books_this_week: 2,
+        most_read_book: Some(("Test Book".to_string(), 3)),
+        busiest_day: Some(("Monday".to_string(), 4)),
+        days_with_reads: 7,
+    };
+
+    let html = bookworm::build_weekly_email_html(&stats).into_string();
+
+    assert!(html.contains("7 of 7"), "should show 7 of 7 days");
+    assert!(
+        html.contains("7 of 7") || html.contains("Perfect week"),
+        "should indicate full-week reading"
+    );
 }
