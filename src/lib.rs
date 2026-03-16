@@ -2180,7 +2180,7 @@ pub struct WeeklyStats {
 pub async fn gather_weekly_stats(pool: &PgPool) -> Result<WeeklyStats> {
     let total_reads_this_week: i64 = sqlx::query_scalar!(
         r#"SELECT COUNT(*) as "count!" FROM reads
-           WHERE read_date >= CURRENT_DATE - INTERVAL '7 days' AND deleted_at IS NULL"#
+           WHERE read_date > CURRENT_DATE - INTERVAL '7 days' AND deleted_at IS NULL"#
     )
     .fetch_one(pool)
     .await?;
@@ -2199,12 +2199,12 @@ pub async fn gather_weekly_stats(pool: &PgPool) -> Result<WeeklyStats> {
     let new_unique_books_this_week: i64 = sqlx::query_scalar!(
         r#"SELECT COUNT(DISTINCT r.book_id) as "count!"
            FROM reads r
-           WHERE r.read_date >= CURRENT_DATE - INTERVAL '7 days'
+           WHERE r.read_date > CURRENT_DATE - INTERVAL '7 days'
              AND r.deleted_at IS NULL
              AND NOT EXISTS (
                  SELECT 1 FROM reads r2
                  WHERE r2.book_id = r.book_id
-                   AND r2.read_date < CURRENT_DATE - INTERVAL '7 days'
+                   AND r2.read_date <= CURRENT_DATE - INTERVAL '7 days'
                    AND r2.deleted_at IS NULL
              )"#
     )
@@ -2214,7 +2214,7 @@ pub async fn gather_weekly_stats(pool: &PgPool) -> Result<WeeklyStats> {
     let most_read_book = sqlx::query!(
         r#"SELECT b.title as "title!", COUNT(*) as "count!"
            FROM reads r JOIN books b ON b.book_id = r.book_id
-           WHERE r.read_date >= CURRENT_DATE - INTERVAL '7 days'
+           WHERE r.read_date > CURRENT_DATE - INTERVAL '7 days'
              AND r.deleted_at IS NULL
            GROUP BY b.book_id, b.title
            ORDER BY COUNT(*) DESC
@@ -2227,7 +2227,7 @@ pub async fn gather_weekly_stats(pool: &PgPool) -> Result<WeeklyStats> {
     let busiest_day = sqlx::query!(
         r#"SELECT TRIM(TO_CHAR(read_date, 'Day')) as "day_name!", COUNT(*) as "count!"
            FROM reads
-           WHERE read_date >= CURRENT_DATE - INTERVAL '7 days' AND deleted_at IS NULL
+           WHERE read_date > CURRENT_DATE - INTERVAL '7 days' AND deleted_at IS NULL
            GROUP BY read_date
            ORDER BY COUNT(*) DESC
            LIMIT 1"#
@@ -2239,7 +2239,7 @@ pub async fn gather_weekly_stats(pool: &PgPool) -> Result<WeeklyStats> {
     let days_with_reads: i64 = sqlx::query_scalar!(
         r#"SELECT COUNT(DISTINCT read_date) as "count!"
            FROM reads
-           WHERE read_date >= CURRENT_DATE - INTERVAL '7 days' AND deleted_at IS NULL"#
+           WHERE read_date > CURRENT_DATE - INTERVAL '7 days' AND deleted_at IS NULL"#
     )
     .fetch_one(pool)
     .await?;
@@ -2256,6 +2256,7 @@ pub async fn gather_weekly_stats(pool: &PgPool) -> Result<WeeklyStats> {
 }
 
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn build_weekly_email_html(stats: &WeeklyStats) -> Markup {
     let milestones = [100, 250, 500, 750, 1000];
     let crossed_milestones: Vec<i64> = milestones
@@ -2286,6 +2287,9 @@ pub fn build_weekly_email_html(stats: &WeeklyStats) -> Markup {
                 }
                 div style="font-size: 16px; color: #9B7B62; font-weight: 600;" {
                     "reads this week"
+                }
+                div style="font-size: 13px; color: #9B7B62; margin-top: 8px;" {
+                    (stats.total_reads_all_time) " all time"
                 }
             }
 
