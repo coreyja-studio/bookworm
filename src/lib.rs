@@ -2380,6 +2380,12 @@ pub fn build_weekly_email_html(stats: &WeeklyStats) -> Markup {
 }
 
 pub async fn send_weekly_email(app_state: AppState) -> Result<()> {
+    use lettre::{
+        AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+        message::{Mailbox, header::ContentType},
+        transport::smtp::authentication::Credentials,
+    };
+
     let stats = gather_weekly_stats(&app_state.db).await?;
 
     if stats.total_reads_this_week == 0 {
@@ -2389,40 +2395,55 @@ pub async fn send_weekly_email(app_state: AppState) -> Result<()> {
 
     let html = build_weekly_email_html(&stats).into_string();
 
-    let api_key = std::env::var("RESEND_API_KEY").wrap_err("RESEND_API_KEY must be set")?;
+    let smtp_host = std::env::var("SMTP_HOST").wrap_err("SMTP_HOST must be set")?;
+    let smtp_username = std::env::var("SMTP_USERNAME").wrap_err("SMTP_USERNAME must be set")?;
+    let smtp_password = std::env::var("SMTP_PASSWORD").wrap_err("SMTP_PASSWORD must be set")?;
+    let from_address = std::env::var("SMTP_FROM")
+        .unwrap_or_else(|_| "Bookworm <bookworm@updates.coreyja.com>".to_string());
     let recipients =
         std::env::var("WEEKLY_EMAIL_RECIPIENTS").wrap_err("WEEKLY_EMAIL_RECIPIENTS must be set")?;
 
-    let to: Vec<String> = recipients
+    let from: Mailbox = from_address.parse().wrap_err("Invalid SMTP_FROM address")?;
+
+    let to_addresses: Vec<Mailbox> = recipients
         .split(',')
-        .map(|s| s.trim().to_string())
+        .map(str::trim)
         .filter(|s| !s.is_empty())
-        .collect();
+        .map(str::parse::<Mailbox>)
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .wrap_err("Invalid recipient address in WEEKLY_EMAIL_RECIPIENTS")?;
 
-    let body = serde_json::json!({
-        "from": "Bookworm <bookworm@updates.coreyja.com>",
-        "to": to,
-        "subject": format!("📚 Amelia's Week: {} reads!", stats.total_reads_this_week),
-        "html": html,
-    });
+    let subject = format!(
+        "\u{1f4da} Amelia's Week: {} reads!",
+        stats.total_reads_this_week
+    );
 
-    let response = app_state
-        .http_client
-        .post("https://api.resend.com/emails")
-        .header("Authorization", format!("Bearer {api_key}"))
-        .json(&body)
-        .timeout(std::time::Duration::from_secs(30))
-        .send()
-        .await
-        .wrap_err("Failed to send weekly email via Resend")?;
+    for to in &to_addresses {
+        let email = Message::builder()
+            .from(from.clone())
+            .to(to.clone())
+            .subject(&subject)
+            .header(ContentType::TEXT_HTML)
+            .body(html.clone())
+            .wrap_err("Failed to build email message")?;
 
-    if !response.status().is_success() {
-        let resp_status = response.status();
-        let text = response.text().await.unwrap_or_default();
-        return Err(eyre!("Resend API returned {resp_status}: {text}"));
+        let creds = Credentials::new(smtp_username.clone(), smtp_password.clone());
+
+        let mailer: AsyncSmtpTransport<Tokio1Executor> =
+            AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp_host)
+                .wrap_err("Failed to create SMTP transport")?
+                .credentials(creds)
+                .build();
+
+        mailer
+            .send(email)
+            .await
+            .wrap_err("Failed to send weekly email via SMTP")?;
+
+        tracing::info!("Weekly email sent to {to}");
     }
 
-    tracing::info!("Weekly email sent successfully");
+    tracing::info!("All weekly emails sent successfully");
     Ok(())
 }
 
