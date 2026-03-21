@@ -24,6 +24,8 @@ pub struct AppState {
     db: sqlx::PgPool,
     cookie_key: CookieKey,
     http_client: reqwest::Client,
+    imgproxy_url: Option<String>,
+    app_base_url: Option<String>,
 }
 
 impl AppState {
@@ -33,10 +35,14 @@ impl AppState {
         let http_client = reqwest::Client::builder()
             .user_agent("Byte/1.0 (contact: corey@coreyja.com)")
             .build()?;
+        let imgproxy_url = std::env::var("IMGPROXY_URL").ok();
+        let app_base_url = std::env::var("APP_BASE_URL").ok();
         Ok(Self {
             db,
             cookie_key,
             http_client,
+            imgproxy_url,
+            app_base_url,
         })
     }
 
@@ -52,6 +58,20 @@ impl AppState {
             db,
             cookie_key,
             http_client,
+            imgproxy_url: None,
+            app_base_url: None,
+        }
+    }
+
+    fn cover_url(&self, book_id: uuid::Uuid, width: u32) -> String {
+        if let (Some(imgproxy), Some(base)) = (&self.imgproxy_url, &self.app_base_url) {
+            let source = format!("{base}/books/{book_id}/cover");
+            format!(
+                "{imgproxy}/unsafe/rs:fit:{width}:0/plain/{}",
+                urlencoding::encode(&source)
+            )
+        } else {
+            format!("/books/{book_id}/cover")
         }
     }
 }
@@ -335,7 +355,7 @@ async fn log_form(
                         div class="bg-white rounded-xl border border-card-border p-3 flex items-center gap-3" {
                             @if entry.has_cover {
                                 a href=(format!("/books/{}", entry.book_id)) {
-                                    img src=(format!("/books/{}/cover", entry.book_id)) alt=(entry.title) class="w-8 h-12 object-cover rounded shrink-0";
+                                    img src=(state.cover_url(entry.book_id, 256)) alt=(entry.title) class="w-8 h-12 object-cover rounded shrink-0";
                                 }
                             } @else {
                                 a href=(format!("/books/{}", entry.book_id)) {
@@ -553,7 +573,7 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
                     div class="bg-white rounded-xl border border-card-border p-4" {
                         div class="flex items-start gap-3" {
                             @if row.has_cover {
-                                img src=(format!("/books/{}/cover", row.book_id)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0 mt-0.5";
+                                img src=(state.cover_url(row.book_id, 320)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0 mt-0.5";
                             } @else {
                                 span class=(format!("bg-accent-{color} text-white rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5")) {
                                     "#" (offset + i as i64 + 1)
@@ -707,7 +727,7 @@ async fn history(State(state): State<AppState>, Query(params): Query<HistoryPara
                         div class="bg-white rounded-xl border border-card-border p-4" {
                             a href=(format!("/books/{}", row.book_id)) class="flex items-center gap-3" {
                                 @if row.has_cover {
-                                    img src=(format!("/books/{}/cover", row.book_id)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0";
+                                    img src=(state.cover_url(row.book_id, 320)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0";
                                 } @else {
                                     span class=(format!("bg-accent-{color} text-white rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold shrink-0")) {
                                         "📖"
@@ -1175,7 +1195,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                 // Book cover
                 div class="shrink-0" {
                     @if book.has_cover {
-                        img src=(format!("/books/{}/cover", book_id)) alt=(book.title)
+                        img src=(state.cover_url(book_id, 512)) alt=(book.title)
                             class="w-24 h-36 object-cover rounded-xl shadow-sm";
                     } @else {
                         div class="w-24 h-36 bg-accent-bg-purple rounded-xl flex items-center justify-center" {
