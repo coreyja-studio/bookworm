@@ -355,7 +355,7 @@ async fn log_form(
                         div class="bg-white rounded-xl border border-card-border p-3 flex items-center gap-3" {
                             @if entry.has_cover {
                                 a href=(format!("/books/{}", entry.book_id)) {
-                                    img src=(state.cover_url(entry.book_id, 256)) alt=(entry.title) class="w-8 h-12 object-cover rounded shrink-0";
+                                    img src=(state.cover_url(entry.book_id, 256)) alt=(entry.title) class="w-8 h-12 object-cover rounded shrink-0" loading="lazy";
                                 }
                             } @else {
                                 a href=(format!("/books/{}", entry.book_id)) {
@@ -573,7 +573,7 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
                     div class="bg-white rounded-xl border border-card-border p-4" {
                         div class="flex items-start gap-3" {
                             @if row.has_cover {
-                                img src=(state.cover_url(row.book_id, 320)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0 mt-0.5";
+                                img src=(state.cover_url(row.book_id, 320)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0 mt-0.5" loading="lazy";
                             } @else {
                                 span class=(format!("bg-accent-{color} text-white rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5")) {
                                     "#" (offset + i as i64 + 1)
@@ -727,7 +727,7 @@ async fn history(State(state): State<AppState>, Query(params): Query<HistoryPara
                         div class="bg-white rounded-xl border border-card-border p-4" {
                             a href=(format!("/books/{}", row.book_id)) class="flex items-center gap-3" {
                                 @if row.has_cover {
-                                    img src=(state.cover_url(row.book_id, 320)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0";
+                                    img src=(state.cover_url(row.book_id, 320)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0" loading="lazy";
                                 } @else {
                                     span class=(format!("bg-accent-{color} text-white rounded-full w-8 h-8 flex items-center justify-center text-xs font-bold shrink-0")) {
                                         "📖"
@@ -1196,7 +1196,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                 div class="shrink-0" {
                     @if book.has_cover {
                         img src=(state.cover_url(book_id, 512)) alt=(book.title)
-                            class="w-24 h-36 object-cover rounded-xl shadow-sm";
+                            class="w-24 h-36 object-cover rounded-xl shadow-sm" loading="lazy";
                     } @else {
                         div class="w-24 h-36 bg-accent-bg-purple rounded-xl flex items-center justify-center" {
                             span class="text-4xl" { "📖" }
