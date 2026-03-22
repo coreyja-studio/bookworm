@@ -2162,3 +2162,322 @@ fn footer() -> Markup {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Weekly Email
+// ---------------------------------------------------------------------------
+
+pub struct WeeklyStats {
+    pub total_reads_this_week: i64,
+    pub total_reads_all_time: i64,
+    pub unique_books_all_time: i64,
+    pub new_unique_books_this_week: i64,
+    pub most_read_book: Option<(String, i64)>,
+    pub busiest_day: Option<(String, i64)>,
+    pub days_with_reads: i64,
+}
+
+pub async fn gather_weekly_stats(pool: &PgPool) -> Result<WeeklyStats> {
+    let total_reads_this_week: i64 = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) as "count!" FROM reads
+           WHERE read_date > CURRENT_DATE - INTERVAL '7 days' AND deleted_at IS NULL"#
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let total_reads_all_time: i64 =
+        sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!" FROM reads WHERE deleted_at IS NULL"#)
+            .fetch_one(pool)
+            .await?;
+
+    let unique_books_all_time: i64 = sqlx::query_scalar!(
+        r#"SELECT COUNT(DISTINCT book_id) as "count!" FROM reads WHERE deleted_at IS NULL"#
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let new_unique_books_this_week: i64 = sqlx::query_scalar!(
+        r#"SELECT COUNT(DISTINCT r.book_id) as "count!"
+           FROM reads r
+           WHERE r.read_date > CURRENT_DATE - INTERVAL '7 days'
+             AND r.deleted_at IS NULL
+             AND NOT EXISTS (
+                 SELECT 1 FROM reads r2
+                 WHERE r2.book_id = r.book_id
+                   AND r2.read_date <= CURRENT_DATE - INTERVAL '7 days'
+                   AND r2.deleted_at IS NULL
+             )"#
+    )
+    .fetch_one(pool)
+    .await?;
+
+    let most_read_book = sqlx::query!(
+        r#"SELECT b.title as "title!", COUNT(*) as "count!"
+           FROM reads r JOIN books b ON b.book_id = r.book_id
+           WHERE r.read_date > CURRENT_DATE - INTERVAL '7 days'
+             AND r.deleted_at IS NULL
+           GROUP BY b.book_id, b.title
+           ORDER BY COUNT(*) DESC
+           LIMIT 1"#
+    )
+    .fetch_optional(pool)
+    .await?
+    .map(|row| (row.title, row.count));
+
+    let busiest_day = sqlx::query!(
+        r#"SELECT TRIM(TO_CHAR(read_date, 'Day')) as "day_name!", COUNT(*) as "count!"
+           FROM reads
+           WHERE read_date > CURRENT_DATE - INTERVAL '7 days' AND deleted_at IS NULL
+           GROUP BY read_date
+           ORDER BY COUNT(*) DESC
+           LIMIT 1"#
+    )
+    .fetch_optional(pool)
+    .await?
+    .map(|row| (row.day_name, row.count));
+
+    let days_with_reads: i64 = sqlx::query_scalar!(
+        r#"SELECT COUNT(DISTINCT read_date) as "count!"
+           FROM reads
+           WHERE read_date > CURRENT_DATE - INTERVAL '7 days' AND deleted_at IS NULL"#
+    )
+    .fetch_one(pool)
+    .await?;
+
+    Ok(WeeklyStats {
+        total_reads_this_week,
+        total_reads_all_time,
+        unique_books_all_time,
+        new_unique_books_this_week,
+        most_read_book,
+        busiest_day,
+        days_with_reads,
+    })
+}
+
+#[must_use]
+#[allow(clippy::too_many_lines)]
+pub fn build_weekly_email_html(stats: &WeeklyStats) -> Markup {
+    let milestones = [100, 250, 500, 750, 1000];
+    let crossed_milestones: Vec<i64> = milestones
+        .iter()
+        .copied()
+        .filter(|&m| {
+            stats.unique_books_all_time >= m
+                && stats.unique_books_all_time - stats.new_unique_books_this_week < m
+        })
+        .collect();
+
+    html! {
+        div style="font-family: 'Nunito', 'Helvetica Neue', Arial, sans-serif; max-width: 500px; margin: 0 auto; background: #FFF6EC; border-radius: 16px; padding: 32px 24px; color: #3D2C1E;" {
+            // Header
+            div style="text-align: center; margin-bottom: 24px;" {
+                div style="font-size: 28px; font-weight: 800; margin-bottom: 4px;" {
+                    "Bookworm Weekly Wrap-Up 🐛📚"
+                }
+                div style="font-size: 13px; color: #9B7B62; text-transform: uppercase; letter-spacing: 2px;" {
+                    "✨ 1,000 Books Before Kindergarten ✨"
+                }
+            }
+
+            // Total reads hero
+            div style="text-align: center; background: white; border-radius: 16px; padding: 24px; margin-bottom: 16px; border: 1px solid #FFE4C8;" {
+                div style="font-size: 48px; font-weight: 800; color: #5CD08E;" {
+                    (stats.total_reads_this_week)
+                }
+                div style="font-size: 16px; color: #9B7B62; font-weight: 600;" {
+                    "reads this week"
+                }
+                div style="font-size: 13px; color: #9B7B62; margin-top: 8px;" {
+                    (stats.total_reads_all_time) " all time"
+                }
+            }
+
+            // Most-read book
+            @if let Some((ref title, count)) = stats.most_read_book {
+                div style="background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid #FFE4C8;" {
+                    div style="font-size: 12px; color: #9B7B62; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;" {
+                        "📖 Most-Read Book"
+                    }
+                    div style="font-size: 18px; font-weight: 700;" {
+                        (title)
+                    }
+                    div style="font-size: 14px; color: #9B7B62;" {
+                        "Read " (count) " time" @if count != 1 { "s" } " this week"
+                    }
+                }
+            }
+
+            // Busiest day
+            @if let Some((ref day_name, count)) = stats.busiest_day {
+                div style="background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid #FFE4C8;" {
+                    div style="font-size: 12px; color: #9B7B62; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;" {
+                        "🗓️ Busiest Reading Day"
+                    }
+                    div style="font-size: 18px; font-weight: 700;" {
+                        (day_name)
+                    }
+                    div style="font-size: 14px; color: #9B7B62;" {
+                        (count) " read" @if count != 1 { "s" }
+                    }
+                }
+            }
+
+            // New unique books
+            div style="background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid #FFE4C8;" {
+                div style="font-size: 12px; color: #9B7B62; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;" {
+                    "🆕 New Books This Week"
+                }
+                div style="font-size: 24px; font-weight: 800; color: #50B4F0;" {
+                    (stats.new_unique_books_this_week)
+                }
+            }
+
+            // Running total toward 1,000
+            div style="background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid #FFE4C8;" {
+                div style="font-size: 12px; color: #9B7B62; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;" {
+                    "📚 Unique Books"
+                }
+                div style="font-size: 24px; font-weight: 800; color: #A882F0;" {
+                    (stats.unique_books_all_time) " / 1,000"
+                }
+            }
+
+            // Reading streak
+            div style="background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid #FFE4C8;" {
+                div style="font-size: 12px; color: #9B7B62; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;" {
+                    "📅 Reading Days"
+                }
+                div style="font-size: 18px; font-weight: 700;" {
+                    (stats.days_with_reads) " of 7 days with reading"
+                }
+                @if stats.days_with_reads == 7 {
+                    div style="font-size: 14px; color: #5CD08E; font-weight: 700; margin-top: 4px;" {
+                        "🔥 Perfect week!"
+                    }
+                }
+            }
+
+            // Milestone callouts
+            @for milestone in &crossed_milestones {
+                div style="background: linear-gradient(135deg, #FFF6EC, #FFF0F6); border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 2px solid #A882F0; text-align: center;" {
+                    div style="font-size: 32px; margin-bottom: 4px;" { "🌟" }
+                    div style="font-size: 18px; font-weight: 800; color: #A882F0;" {
+                        "Milestone: " (milestone) " unique books!"
+                    }
+                    div style="font-size: 14px; color: #9B7B62;" {
+                        "What an amazing achievement! 🎉"
+                    }
+                }
+            }
+
+            // Footer
+            div style="text-align: center; margin-top: 24px; font-size: 13px; color: #9B7B62;" {
+                "Bookworm 🐛 — Tracking reads for Amelia"
+            }
+        }
+    }
+}
+
+pub async fn send_weekly_email(app_state: AppState) -> Result<()> {
+    use lettre::{
+        AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
+        message::{Mailbox, header::ContentType},
+        transport::smtp::authentication::Credentials,
+    };
+
+    let stats = gather_weekly_stats(&app_state.db).await?;
+
+    if stats.total_reads_this_week == 0 {
+        tracing::info!("No reads this week, skipping weekly email");
+        return Ok(());
+    }
+
+    let html = build_weekly_email_html(&stats).into_string();
+
+    let smtp_host = std::env::var("SMTP_HOST").wrap_err("SMTP_HOST must be set")?;
+    let smtp_username = std::env::var("SMTP_USERNAME").wrap_err("SMTP_USERNAME must be set")?;
+    let smtp_password = std::env::var("SMTP_PASSWORD").wrap_err("SMTP_PASSWORD must be set")?;
+    let from_address = std::env::var("SMTP_FROM")
+        .unwrap_or_else(|_| "Bookworm <bookworm@updates.coreyja.com>".to_string());
+    let recipients =
+        std::env::var("WEEKLY_EMAIL_RECIPIENTS").wrap_err("WEEKLY_EMAIL_RECIPIENTS must be set")?;
+
+    let from: Mailbox = from_address.parse().wrap_err("Invalid SMTP_FROM address")?;
+
+    let to_addresses: Vec<Mailbox> = recipients
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::parse::<Mailbox>)
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .wrap_err("Invalid recipient address in WEEKLY_EMAIL_RECIPIENTS")?;
+
+    let subject = format!(
+        "\u{1f4da} Amelia's Week: {} reads!",
+        stats.total_reads_this_week
+    );
+
+    for to in &to_addresses {
+        let email = Message::builder()
+            .from(from.clone())
+            .to(to.clone())
+            .subject(&subject)
+            .header(ContentType::TEXT_HTML)
+            .body(html.clone())
+            .wrap_err("Failed to build email message")?;
+
+        let creds = Credentials::new(smtp_username.clone(), smtp_password.clone());
+
+        let mailer: AsyncSmtpTransport<Tokio1Executor> =
+            AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp_host)
+                .wrap_err("Failed to create SMTP transport")?
+                .credentials(creds)
+                .build();
+
+        mailer
+            .send(email)
+            .await
+            .wrap_err("Failed to send weekly email via SMTP")?;
+
+        tracing::info!("Weekly email sent to {to}");
+    }
+
+    tracing::info!("All weekly emails sent successfully");
+    Ok(())
+}
+
+#[must_use]
+pub fn cron_registry() -> cja::cron::CronRegistry<AppState> {
+    let mut registry = cja::cron::CronRegistry::new();
+    registry
+        .register_with_cron(
+            "weekly_reading_email",
+            Some("Send weekly reading wrap-up email every Sunday at 6 PM ET"),
+            "0 0 18 * * Sun *",
+            |app_state: AppState, _context: String| {
+                Box::pin(async move {
+                    send_weekly_email(app_state)
+                        .await
+                        .map_err(|e| std::io::Error::other(e.to_string()))
+                })
+            },
+        )
+        .expect("valid cron expression");
+    registry
+}
+
+pub async fn run_cron(
+    app_state: AppState,
+    shutdown_token: cja::jobs::CancellationToken,
+) -> Result<()> {
+    cja::cron::Worker::new_with_timezone(
+        app_state,
+        cron_registry(),
+        cja::chrono_tz::US::Eastern,
+        std::time::Duration::from_secs(60),
+    )
+    .run(shutdown_token)
+    .await
+    .map_err(|e| eyre!(e))
+}

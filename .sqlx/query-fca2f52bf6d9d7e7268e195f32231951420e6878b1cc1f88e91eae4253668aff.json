@@ -1,0 +1,20 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT COUNT(DISTINCT read_date) as \"count!\"\n           FROM reads\n           WHERE read_date > CURRENT_DATE - INTERVAL '7 days' AND deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "fca2f52bf6d9d7e7268e195f32231951420e6878b1cc1f88e91eae4253668aff"
+}

@@ -1,2 +1,7 @@
 [env]
 DATABASE_URL = "postgres:///bookworm_dev"
+# SMTP_HOST = "smtp.example.com"  # SMTP server hostname
+# SMTP_USERNAME = "user@example.com"  # SMTP auth username
+# SMTP_PASSWORD = "xxx"  # SMTP auth password
+# SMTP_FROM = "Bookworm <bookworm@updates.coreyja.com>"  # From address (optional, has default)
+# WEEKLY_EMAIL_RECIPIENTS = "test@example.com"  # Comma-separated recipient addresses
