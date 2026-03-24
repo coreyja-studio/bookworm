@@ -417,21 +417,52 @@ async fn log_read(State(state): State<AppState>, Form(input): Form<LogReadInput>
         .map(str::trim)
         .filter(|s| !s.is_empty());
 
-    // Match by title (case-insensitive) to avoid duplicate books
-    let book = sqlx::query_scalar!(
-        r#"INSERT INTO books (title, author, isbn, cover_url)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT ((LOWER(title))) DO UPDATE
-             SET isbn = COALESCE(EXCLUDED.isbn, books.isbn),
-                 cover_url = COALESCE(EXCLUDED.cover_url, books.cover_url)
-           RETURNING book_id"#,
-        title,
-        author,
-        isbn,
-        cover_url,
-    )
-    .fetch_one(&state.db)
-    .await;
+    // ISBN is the authoritative book identifier when present.
+    // Check for an existing book by ISBN first to avoid unique constraint violations
+    // when the user edits the title after scanning (title no longer matches, but ISBN does).
+    let existing_by_isbn = if let Some(isbn_val) = isbn {
+        sqlx::query_scalar!(
+            r#"SELECT book_id FROM books WHERE isbn = $1"#,
+            isbn_val
+        )
+        .fetch_optional(&state.db)
+        .await
+        .ok()
+        .flatten()
+    } else {
+        None
+    };
+
+    let book = if let Some(book_id) = existing_by_isbn {
+        // Book found by ISBN — update title/author/cover (user may have corrected them)
+        sqlx::query_scalar!(
+            r#"UPDATE books SET title = $1, author = $2,
+                   cover_url = COALESCE($3, cover_url)
+               WHERE book_id = $4 RETURNING book_id"#,
+            title,
+            author,
+            cover_url,
+            book_id
+        )
+        .fetch_one(&state.db)
+        .await
+    } else {
+        // No ISBN match — upsert by title (handles books without ISBNs)
+        sqlx::query_scalar!(
+            r#"INSERT INTO books (title, author, isbn, cover_url)
+               VALUES ($1, $2, $3, $4)
+               ON CONFLICT ((LOWER(title))) DO UPDATE
+                 SET isbn = COALESCE(EXCLUDED.isbn, books.isbn),
+                     cover_url = COALESCE(EXCLUDED.cover_url, books.cover_url)
+               RETURNING book_id"#,
+            title,
+            author,
+            isbn,
+            cover_url,
+        )
+        .fetch_one(&state.db)
+        .await
+    };
 
     match book {
         Ok(book_id) => {
