@@ -54,7 +54,7 @@ async fn run_application() -> cja::Result<()> {
 
 fn spawn_application_tasks(
     app_state: &AppState,
-    #[allow(unused_variables)] shutdown_token: &cja::jobs::CancellationToken,
+    shutdown_token: &cja::jobs::CancellationToken,
 ) -> Vec<tokio::task::JoinHandle<std::result::Result<(), cja::color_eyre::Report>>> {
     let mut futures = vec![];
 
@@ -63,6 +63,17 @@ fn spawn_application_tasks(
         futures.push(tokio::spawn(run_server(routes(app_state.clone()))));
     } else {
         info!("Server Disabled");
+    }
+
+    if is_feature_enabled("CRON") {
+        info!("Cron Enabled");
+        let app = app_state.clone();
+        let token = shutdown_token.clone();
+        futures.push(tokio::spawn(
+            async move { bookworm::run_cron(app, token).await },
+        ));
+    } else {
+        info!("Cron Disabled");
     }
 
     info!("All application tasks spawned successfully");

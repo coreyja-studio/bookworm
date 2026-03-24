@@ -1,0 +1,26 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT b.title as \"title!\", COUNT(*) as \"count!\"\n           FROM reads r JOIN books b ON b.book_id = r.book_id\n           WHERE r.read_date > CURRENT_DATE - INTERVAL '7 days'\n             AND r.deleted_at IS NULL\n           GROUP BY b.book_id, b.title\n           ORDER BY COUNT(*) DESC\n           LIMIT 1",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "title!",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "count!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "76694fb54cb4258fb7c2625910fcc325bd70f08851c9729e33f22e1e3e8644e1"
+}
