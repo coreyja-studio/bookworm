@@ -2024,7 +2024,7 @@ fn layout(
                     (PreEscaped("@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }"))
                     (PreEscaped(".toast { animation: slideUp 0.3s ease-out, fadeOut 0.3s ease-in 2.7s forwards; }"))
                 }
-                script type="module" {
+                script {
                     (PreEscaped(haptics_script()))
                 }
             }
@@ -2043,13 +2043,38 @@ fn layout(
 
 fn haptics_script() -> &'static str {
     r"
-import { WebHaptics } from 'https://cdn.jsdelivr.net/npm/web-haptics/dist/index.mjs';
-const haptics = new WebHaptics();
-document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.btn-primary').forEach(btn => {
-    btn.addEventListener('touchstart', () => { haptics.trigger('medium'); }, { passive: true });
-  });
-});
+(function() {
+  // iOS: toggle a hidden <input type=checkbox switch> to trigger native haptic feedback.
+  // Android: use navigator.vibrate() directly.
+  // No CDN dependency — the web-haptics library was failing to load silently as an ESM import.
+  var label, checkbox;
+  function ensureDOM() {
+    if (label) return;
+    label = document.createElement('label');
+    label.setAttribute('for', 'haptic-fb');
+    label.style.position = 'fixed';
+    label.style.left = '-9999px';
+    checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.setAttribute('switch', '');
+    checkbox.id = 'haptic-fb';
+    checkbox.style.all = 'initial';
+    checkbox.style.appearance = 'auto';
+    checkbox.style.position = 'fixed';
+    checkbox.style.left = '-9999px';
+    label.appendChild(checkbox);
+    document.body.appendChild(label);
+  }
+  function hapticTap() {
+    if (navigator.vibrate) { navigator.vibrate(25); return; }
+    ensureDOM();
+    label.click();
+  }
+  // Event delegation — works for all .btn-primary elements, even future ones
+  document.addEventListener('touchstart', function(e) {
+    if (e.target.closest && e.target.closest('.btn-primary')) { hapticTap(); }
+  }, { passive: true });
+})();
 "
 }
 
