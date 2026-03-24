@@ -749,8 +749,6 @@ async fn history(State(state): State<AppState>, Query(params): Query<HistoryPara
 
 #[allow(clippy::cast_precision_loss, clippy::too_many_lines)]
 async fn progress(State(state): State<AppState>, Query(params): Query<ProgressParams>) -> Markup {
-    let show_reads = params.mode.as_deref() == Some("reads");
-
     let total_reads: i64 =
         sqlx::query_scalar!(r#"SELECT COUNT(*) as "count!" FROM reads WHERE deleted_at IS NULL"#)
             .fetch_one(&state.db)
@@ -763,6 +761,14 @@ async fn progress(State(state): State<AppState>, Query(params): Query<ProgressPa
     .fetch_one(&state.db)
     .await
     .unwrap_or(0);
+
+    // Default to total reads; once milestone hit, default to unique books
+    let milestone_reached = total_reads >= 1000;
+    let show_reads = match params.mode.as_deref() {
+        Some("reads") => true,
+        Some("books") => false,
+        _ => !milestone_reached,
+    };
 
     let progress_count = if show_reads {
         total_reads
@@ -809,7 +815,7 @@ async fn progress(State(state): State<AppState>, Query(params): Query<ProgressPa
     let content = html! {
         div class="flex justify-center mb-6" {
             div class="inline-flex rounded-full border border-card-border overflow-hidden text-sm font-bold" {
-                a href="/progress"
+                a href="/progress?mode=books"
                     class=(format!("px-4 py-2 transition-colors {}", if show_reads { inactive_tab } else { active_tab })) {
                     "Unique Books"
                 }
@@ -973,6 +979,13 @@ async fn stats(State(state): State<AppState>) -> Markup {
 
     let reads_per_day = reads_this_week as f64 / 7.0;
     let total_rereads = (total_reads - unique_books).max(0);
+    // Pre-milestone: track total reads; post-milestone: track unique books
+    let milestone_reached = total_reads >= 1000;
+    let tracking_count = if milestone_reached {
+        unique_books
+    } else {
+        total_reads
+    };
     let milestones: [(i64, &str); 5] = [
         (100, "🌟"),
         (250, "🔥"),
@@ -982,12 +995,12 @@ async fn stats(State(state): State<AppState>) -> Markup {
     ];
     let milestones_reached = milestones
         .iter()
-        .filter(|(n, _)| unique_books >= *n)
+        .filter(|(n, _)| tracking_count >= *n)
         .count();
     let kindergarten_start = chrono::NaiveDate::from_ymd_opt(2030, 9, 1).unwrap();
     let today = chrono::Utc::now().date_naive();
     let days_left = (kindergarten_start - today).num_days().max(0);
-    let books_remaining = (1000 - unique_books).max(0);
+    let books_remaining = (1000 - tracking_count).max(0);
     let months_left = days_left as f64 / 30.44;
     let books_per_month_needed = if months_left > 0.0 {
         books_remaining as f64 / months_left
@@ -1045,7 +1058,7 @@ async fn stats(State(state): State<AppState>) -> Markup {
                 div class="text-subtext text-sm mt-1" { "Milestones" }
                 div class="text-lg mt-1" {
                     @for (n, emoji) in &milestones {
-                        @let opacity = if unique_books >= *n { "" } else { " opacity-30" };
+                        @let opacity = if tracking_count >= *n { "" } else { " opacity-30" };
                         span class=(format!("inline-block{opacity}")) { (*emoji) }
                     }
                 }
@@ -1057,7 +1070,7 @@ async fn stats(State(state): State<AppState>) -> Markup {
         }
 
         div class={
-            @let (bg, border) = if days_left == 0 && unique_books >= 1000 {
+            @let (bg, border) = if days_left == 0 && tracking_count >= 1000 {
                 ("bg-accent-bg-green", "border-accent-green")
             } else if days_left == 0 {
                 ("bg-accent-bg-red", "border-accent-red")
@@ -1070,7 +1083,7 @@ async fn stats(State(state): State<AppState>) -> Markup {
             };
             (format!("{bg} rounded-2xl border {border} p-6 text-center"))
         } {
-            @if days_left == 0 && unique_books >= 1000 {
+            @if days_left == 0 && tracking_count >= 1000 {
                 div class="font-heading text-xl font-bold" { "Goal reached! 🏆" }
             } @else if days_left == 0 {
                 div class="font-heading text-xl font-bold" { "Goal period ended" }
@@ -2063,7 +2076,15 @@ fn tailwind_config() -> &'static str {
 }
 
 fn nav_header(active_tab: &str, total_reads: i64, unique_books: i64) -> Markup {
-    let pct = std::cmp::min((unique_books * 100) / 1000, 100);
+    // Once we hit 1000 total reads, switch to tracking unique books
+    let milestone_reached = total_reads >= 1000;
+    let (count, to_go, label) = if milestone_reached {
+        (unique_books, 1000 - unique_books, "unique books")
+    } else {
+        (total_reads, 1000 - total_reads, "reads")
+    };
+    let pct = std::cmp::min((count * 100) / 1000, 100);
+
     let tabs = [
         ("add", "📚", "Add", "/log"),
         ("library", "📋", "Library", "/library"),
@@ -2082,11 +2103,11 @@ fn nav_header(active_tab: &str, total_reads: i64, unique_books: i64) -> Markup {
                     (rainbow_title())
                 }
                 div class="flex justify-between text-sm text-subtext mt-2" {
-                    span { (total_reads) " reads" }
-                    @if unique_books >= 1000 {
+                    span { (count) " " (label) }
+                    @if count >= 1000 {
                         span { "Goal reached! 🎉" }
                     } @else {
-                        span { (1000 - unique_books) " to go!" }
+                        span { (to_go) " to go!" }
                     }
                 }
                 div class="bg-accent-bg-orange rounded-full h-3 mt-1 overflow-hidden" {
