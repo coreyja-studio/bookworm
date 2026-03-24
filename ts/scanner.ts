@@ -35,11 +35,24 @@ function initScanner(): void {
     scanner = new Html5Qrcode("scanner-container", {
       formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8],
       verbose: false,
-    });
+      // Use native BarcodeDetector API on iOS/Chrome when available — much faster than WASM fallback
+      useBarCodeDetectorIfSupported: true,
+    } as ConstructorParameters<typeof Html5Qrcode>[1]);
     scanner
       .start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 150 } },
+        {
+          fps: 15,
+          qrbox: { width: 280, height: 160 },
+          disableFlip: true,
+          videoConstraints: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            // Hint iOS to keep autofocus active (helps with macro lens switching)
+            focusMode: { ideal: "continuous" },
+          } as MediaTrackConstraints,
+        },
         onScanSuccess,
         () => {},
       )
