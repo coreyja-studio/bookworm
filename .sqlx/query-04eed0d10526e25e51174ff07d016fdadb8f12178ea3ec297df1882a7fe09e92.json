@@ -1,0 +1,25 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE books SET title = $1, author = $2,\n                   cover_url = COALESCE($3, cover_url)\n               WHERE book_id = $4 RETURNING book_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "book_id",
+        "type_info": "Uuid"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Text",
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "04eed0d10526e25e51174ff07d016fdadb8f12178ea3ec297df1882a7fe09e92"
+}
