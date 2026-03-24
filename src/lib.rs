@@ -421,14 +421,11 @@ async fn log_read(State(state): State<AppState>, Form(input): Form<LogReadInput>
     // Check for an existing book by ISBN first to avoid unique constraint violations
     // when the user edits the title after scanning (title no longer matches, but ISBN does).
     let existing_by_isbn = if let Some(isbn_val) = isbn {
-        sqlx::query_scalar!(
-            r#"SELECT book_id FROM books WHERE isbn = $1"#,
-            isbn_val
-        )
-        .fetch_optional(&state.db)
-        .await
-        .ok()
-        .flatten()
+        sqlx::query_scalar!(r#"SELECT book_id FROM books WHERE isbn = $1"#, isbn_val)
+            .fetch_optional(&state.db)
+            .await
+            .ok()
+            .flatten()
     } else {
         None
     };
