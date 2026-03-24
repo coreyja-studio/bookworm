@@ -2003,8 +2003,8 @@ async fn layout_includes_web_haptics_script() {
     let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
 
     assert!(
-        html.contains("web-haptics"),
-        "Layout should include the web-haptics library for mobile haptic feedback"
+        html.contains("haptic-fb"),
+        "Layout should include the inline haptic feedback script"
     );
 }
 
