@@ -36,7 +36,6 @@ function initScanner(): void {
       formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8],
       verbose: false,
       // Use native BarcodeDetector API on iOS/Chrome when available — much faster than WASM fallback
-      // @ts-expect-error: useBarCodeDetectorIfSupported exists at runtime in html5-qrcode 2.3.8 but not in the type defs
       useBarCodeDetectorIfSupported: true,
     });
     scanner
