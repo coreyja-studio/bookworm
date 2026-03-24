@@ -980,8 +980,7 @@ async fn stats(State(state): State<AppState>) -> Markup {
     let reads_per_day = reads_this_week as f64 / 7.0;
     let total_rereads = (total_reads - unique_books).max(0);
     // Pre-milestone: track total reads; post-milestone: track unique books
-    let milestone_reached = total_reads >= 1000;
-    let tracking_count = if milestone_reached {
+    let tracking_count = if total_reads >= 1000 {
         unique_books
     } else {
         total_reads
