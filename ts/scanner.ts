@@ -36,8 +36,9 @@ function initScanner(): void {
       formatsToSupport: [Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8],
       verbose: false,
       // Use native BarcodeDetector API on iOS/Chrome when available — much faster than WASM fallback
+      // @ts-expect-error: useBarCodeDetectorIfSupported exists at runtime in html5-qrcode 2.3.8 but not in the type defs
       useBarCodeDetectorIfSupported: true,
-    } as ConstructorParameters<typeof Html5Qrcode>[1]);
+    });
     scanner
       .start(
         { facingMode: "environment" },
@@ -50,8 +51,9 @@ function initScanner(): void {
             width: { ideal: 1920 },
             height: { ideal: 1080 },
             // Hint iOS to keep autofocus active (helps with macro lens switching)
+            // @ts-expect-error: focusMode is a valid constraint on iOS Safari but not in TS's MediaTrackConstraints
             focusMode: { ideal: "continuous" },
-          } as MediaTrackConstraints,
+          },
         },
         onScanSuccess,
         () => {},
