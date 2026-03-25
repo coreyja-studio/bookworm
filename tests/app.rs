@@ -1811,8 +1811,14 @@ async fn log_book_button_uses_transition_not_transition_shadow() {
 
     // The submit button must NOT use transition-shadow (which only animates shadow,
     // blocking the scale animation). It should use the generic `transition` class.
+    // We check the button element specifically since the embedded Tailwind CSS defines
+    // .transition-shadow as a utility class.
+    let button_section = html
+        .find("Log Book")
+        .and_then(|pos| html.get(pos.saturating_sub(300)..pos + 100))
+        .expect("should find Log Book button in HTML");
     assert!(
-        !html.contains("transition-shadow"),
+        !button_section.contains("transition-shadow"),
         "Log Book button should not use transition-shadow — scale animation requires generic transition class"
     );
 }
@@ -1973,9 +1979,14 @@ async fn read_again_button_uses_transition_not_transition_shadow() {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
 
-    // Same as the Log Book button — transition-shadow blocks scale animation
+    // Same as the Log Book button — transition-shadow blocks scale animation.
+    // Check the button element specifically since embedded Tailwind CSS defines .transition-shadow.
+    let button_section = html
+        .find("Read Again")
+        .and_then(|pos| html.get(pos.saturating_sub(300)..pos + 100))
+        .expect("should find Read Again button in HTML");
     assert!(
-        !html.contains("transition-shadow"),
+        !button_section.contains("transition-shadow"),
         "Read Again button should not use transition-shadow — scale animation requires generic transition class"
     );
 }
