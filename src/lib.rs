@@ -320,7 +320,7 @@ async fn log_form(
             div class="flex justify-between items-center mb-4" {
                 h2 class="font-heading text-2xl font-bold" { "Log a Book 📖" }
                 button type="button" id="scan-btn"
-                    class="text-2xl hover:scale-110 transition-transform" { "📷" }
+                    class="text-2xl hover:scale-110 transition-transform haptic-medium" { "📷" }
             }
             form method="post" action="/log" class="space-y-4" {
                 div {
@@ -339,7 +339,7 @@ async fn log_form(
                 input type="hidden" name="isbn" id="isbn" value="";
                 input type="hidden" name="cover_url" id="cover_url" value="";
                 button type="submit"
-                    class="bg-gradient-to-r from-accent-orange to-accent-red text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition active:scale-95 w-full btn-primary" {
+                    class="bg-gradient-to-r from-accent-orange to-accent-red text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition active:scale-95 w-full haptic-heavy" {
                     "Log Book #" (total_reads + 1)
                 }
             }
@@ -352,7 +352,7 @@ async fn log_form(
                     @for (i, entry) in recent.iter().enumerate() {
                         @let colors = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "teal"];
                         @let color = colors[i % colors.len()];
-                        div class="bg-white rounded-xl border border-card-border p-3 flex items-center gap-3" {
+                        div class="bg-white rounded-xl border border-card-border p-3 flex items-center gap-3 haptic-light" {
                             @if entry.has_cover {
                                 a href=(format!("/books/{}", entry.book_id)) {
                                     img src=(state.cover_url(entry.book_id, 256)) alt=(entry.title) class="w-8 h-12 object-cover rounded shrink-0" loading="lazy";
@@ -372,7 +372,7 @@ async fn log_form(
                             }
                             form method="post" action="/log/reread" {
                                 input type="hidden" name="book_id" value=(entry.book_id);
-                                button type="submit" class="text-accent-orange text-sm font-bold hover:underline shrink-0" { "Re-read" }
+                                button type="submit" class="text-accent-orange text-sm font-bold hover:underline shrink-0 haptic-medium" { "Re-read" }
                             }
                         }
                     }
@@ -584,9 +584,9 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
         div class="flex justify-end mb-3" {
             @let q_param = params.q.as_deref().map_or(String::new(), |q| format!("&q={}", urlencoding::encode(q)));
             @if sort_recent {
-                a href=(format!("/library?sort=alpha{q_param}")) class="text-sm text-accent-orange font-bold" { "Sort: Recent ▼" }
+                a href=(format!("/library?sort=alpha{q_param}")) class="text-sm text-accent-orange font-bold haptic-light" { "Sort: Recent ▼" }
             } @else {
-                a href=(format!("/library?sort=recent{q_param}")) class="text-sm text-accent-orange font-bold" { "Sort: A→Z ▼" }
+                a href=(format!("/library?sort=recent{q_param}")) class="text-sm text-accent-orange font-bold haptic-light" { "Sort: A→Z ▼" }
             }
         }
 
@@ -598,7 +598,7 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
             div class="space-y-3" {
                 @for (i, row) in rows.iter().enumerate() {
                     @let color = colors[i % colors.len()];
-                    div class="bg-white rounded-xl border border-card-border p-4" {
+                    div class="bg-white rounded-xl border border-card-border p-4 haptic-light" {
                         div class="flex items-start gap-3" {
                             @if row.has_cover {
                                 img src=(state.cover_url(row.book_id, 320)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0 mt-0.5" loading="lazy";
@@ -624,7 +624,7 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
                             div class="flex items-center gap-2 shrink-0" {
                                 form method="post" action="/library/reread" {
                                     input type="hidden" name="book_id" value=(row.book_id);
-                                    button type="submit" class="text-accent-orange text-sm font-bold hover:underline" { "Re-read" }
+                                    button type="submit" class="text-accent-orange text-sm font-bold hover:underline haptic-medium" { "Re-read" }
                                 }
                             }
                         }
@@ -642,12 +642,12 @@ async fn library(State(state): State<AppState>, Query(params): Query<LibraryPara
                 s
             };
             @if has_prev {
-                a href=(format!("/library?page={}{}", page - 1, extra)) class="text-accent-orange font-bold" { "← Previous" }
+                a href=(format!("/library?page={}{}", page - 1, extra)) class="text-accent-orange font-bold haptic-light" { "← Previous" }
             } @else {
                 span {}
             }
             @if has_next {
-                a href=(format!("/library?page={}{}", page + 1, extra)) class="text-accent-orange font-bold" { "Next →" }
+                a href=(format!("/library?page={}{}", page + 1, extra)) class="text-accent-orange font-bold haptic-light" { "Next →" }
             }
         }
     };
@@ -752,7 +752,7 @@ async fn history(State(state): State<AppState>, Query(params): Query<HistoryPara
                     }
                     @for (i, row) in reads {
                         @let color = colors[i % colors.len()];
-                        div class="bg-white rounded-xl border border-card-border p-4" {
+                        div class="bg-white rounded-xl border border-card-border p-4 haptic-light" {
                             a href=(format!("/books/{}", row.book_id)) class="flex items-center gap-3" {
                                 @if row.has_cover {
                                     img src=(state.cover_url(row.book_id, 320)) alt=(row.title) class="w-10 h-14 object-cover rounded shrink-0" loading="lazy";
@@ -776,12 +776,12 @@ async fn history(State(state): State<AppState>, Query(params): Query<HistoryPara
 
         div class="flex justify-between mt-6" {
             @if has_prev {
-                a href=(format!("/history?page={}", page - 1)) class="text-accent-orange font-bold" { "← Newer" }
+                a href=(format!("/history?page={}", page - 1)) class="text-accent-orange font-bold haptic-light" { "← Newer" }
             } @else {
                 span {}
             }
             @if has_next {
-                a href=(format!("/history?page={}", page + 1)) class="text-accent-orange font-bold" { "Older →" }
+                a href=(format!("/history?page={}", page + 1)) class="text-accent-orange font-bold haptic-light" { "Older →" }
             }
         }
     };
@@ -864,11 +864,11 @@ async fn progress(State(state): State<AppState>, Query(params): Query<ProgressPa
         div class="flex justify-center mb-6" {
             div class="inline-flex rounded-full border border-card-border overflow-hidden text-sm font-bold" {
                 a href="/progress?mode=books"
-                    class=(format!("px-4 py-2 transition-colors {}", if show_reads { inactive_tab } else { active_tab })) {
+                    class=(format!("haptic-medium px-4 py-2 transition-colors {}", if show_reads { inactive_tab } else { active_tab })) {
                     "Unique Books"
                 }
                 a href="/progress?mode=reads"
-                    class=(format!("px-4 py-2 transition-colors {}", if show_reads { active_tab } else { inactive_tab })) {
+                    class=(format!("haptic-medium px-4 py-2 transition-colors {}", if show_reads { active_tab } else { inactive_tab })) {
                     "Total Reads"
                 }
             }
@@ -1273,7 +1273,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                         }
                         div class="flex gap-2" {
                             button type="submit"
-                                class="bg-accent-orange text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-accent-red transition-colors" {
+                                class="bg-accent-orange text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-accent-red transition-colors haptic-medium" {
                                 "Save"
                             }
                             button type="button" onclick="document.getElementById('book-info-edit').classList.add('hidden'); document.getElementById('book-info-display').classList.remove('hidden');"
@@ -1288,7 +1288,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
             // Read Again button
             form method="post" action=(format!("/books/{}/read-again", book_id)) class="mt-4" {
                 button type="submit"
-                    class="bg-gradient-to-r from-accent-orange to-accent-red text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition active:scale-95 w-full btn-primary" {
+                    class="bg-gradient-to-r from-accent-orange to-accent-red text-white font-bold py-3 px-6 rounded-xl shadow-lg hover:shadow-xl transition active:scale-95 w-full haptic-heavy" {
                     "Read Again 📖"
                 }
             }
@@ -1299,7 +1299,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                     div class="flex justify-between items-center mb-2" {
                         h3 class="font-bold text-sm" { "Add Cover via ISBN" }
                         button type="button" id="scan-btn"
-                            class="text-xl hover:scale-110 transition-transform" { "📷" }
+                            class="text-xl hover:scale-110 transition-transform haptic-medium" { "📷" }
                     }
                     form method="post" action=(format!("/books/{}/update-isbn", book_id)) id="isbn-form" class="flex gap-2" {
                         input type="text" name="isbn" id="isbn" required
@@ -1307,7 +1307,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                             class="flex-1 bg-accent-bg-orange rounded-xl px-3 py-2 text-sm border-none focus:ring-2 focus:ring-accent-orange focus:outline-none";
                         input type="hidden" name="cover_url" id="cover_url" value="";
                         button type="submit"
-                            class="bg-accent-orange text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-accent-red transition-colors" {
+                            class="bg-accent-orange text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-accent-red transition-colors haptic-medium" {
                             "Look Up"
                         }
                     }
@@ -1326,7 +1326,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                     input type="file" name="cover" accept="image/*" required
                         class="block w-full text-sm text-subtext file:mr-2 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-accent-bg-purple file:text-accent-purple hover:file:bg-accent-bg-orange";
                     button type="submit"
-                        class="w-full bg-accent-orange text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-accent-red transition-colors btn-primary" {
+                        class="w-full bg-accent-orange text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-accent-red transition-colors haptic-medium" {
                         "Upload"
                     }
                 }
@@ -2072,10 +2072,10 @@ fn layout(
 fn haptics_script() -> &'static str {
     r"
 (function() {
-  // iOS: toggle a hidden <input type=checkbox switch> to trigger native haptic feedback.
+  // iOS: toggle a hidden <input type=checkbox switch> repeatedly to simulate haptic patterns.
+  // Varying duration + toggle frequency = different perceived intensities.
   // Android: use navigator.vibrate() directly.
-  // No CDN dependency — the web-haptics library was failing to load silently as an ESM import.
-  var label, checkbox;
+  var label, checkbox, rafId;
   function ensureDOM() {
     if (label) return;
     label = document.createElement('label');
@@ -2093,14 +2093,33 @@ fn haptics_script() -> &'static str {
     label.appendChild(checkbox);
     document.body.appendChild(label);
   }
-  function hapticTap() {
-    if (navigator.vibrate) { navigator.vibrate(25); return; }
+  // duration: how long the pattern runs (ms)
+  // intensity: 0-1, controls toggle frequency (1 = every 16ms, 0.3 = every ~145ms)
+  function haptic(duration, intensity) {
+    if (navigator.vibrate) { navigator.vibrate(duration); return; }
     ensureDOM();
-    label.click();
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    label.click(); // first click synchronously (user gesture context)
+    if (duration <= 16) return; // single tick is enough for short patterns
+    var start = 0, lastToggle = 0;
+    var interval = 16 + (1 - intensity) * 184; // ms between toggles
+    function loop(t) {
+      if (!start) { start = t; lastToggle = t; }
+      if (t - start >= duration) { rafId = null; return; }
+      if (t - lastToggle >= interval) { label.click(); lastToggle = t; }
+      rafId = requestAnimationFrame(loop);
+    }
+    rafId = requestAnimationFrame(loop);
   }
-  // Event delegation — works for all .btn-primary elements, even future ones
+  // Three haptic tiers:
+  //   .haptic-heavy  — primary actions: 35ms @ full intensity
+  //   .haptic-medium — secondary actions: 25ms @ 0.7 intensity
+  //   .haptic-light  — navigation/cards: single tick (10ms @ 0.4)
   document.addEventListener('touchstart', function(e) {
-    if (e.target.closest && e.target.closest('.btn-primary')) { hapticTap(); }
+    if (!e.target.closest) return;
+    if (e.target.closest('.haptic-heavy'))  { haptic(35, 1.0); return; }
+    if (e.target.closest('.haptic-medium')) { haptic(25, 0.7); return; }
+    if (e.target.closest('.haptic-light'))  { haptic(10, 0.4); return; }
   }, { passive: true });
 })();
 "
@@ -2198,9 +2217,9 @@ fn nav_header(active_tab: &str, total_reads: i64, unique_books: i64) -> Markup {
                         };
                         a href=(*href) class={
                             @if is_active {
-                                (format!("rounded-xl border border-accent-{tab_color} bg-accent-bg-{tab_color} px-3 py-1 text-center"))
+                                (format!("haptic-medium rounded-xl border border-accent-{tab_color} bg-accent-bg-{tab_color} px-3 py-1 text-center"))
                             } @else {
-                                "px-3 py-1 text-subtext text-center"
+                                "haptic-medium px-3 py-1 text-subtext text-center"
                             }
                         } {
                             div { (*emoji) }

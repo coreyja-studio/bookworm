@@ -1782,8 +1782,8 @@ async fn log_book_button_has_btn_primary_selector_class() {
     let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
 
     assert!(
-        html.contains("btn-primary"),
-        "Log Book submit button should have btn-primary class so haptic script can find it"
+        html.contains("haptic-heavy"),
+        "Log Book submit button should have haptic-heavy class for haptic feedback"
     );
 }
 
@@ -1920,8 +1920,8 @@ async fn read_again_button_has_btn_primary_selector_class() {
     let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
 
     assert!(
-        html.contains("btn-primary"),
-        "Read Again button should have btn-primary class so haptic script can find it"
+        html.contains("haptic-heavy"),
+        "Read Again button should have haptic-heavy class for haptic feedback"
     );
 }
 
@@ -2031,7 +2031,7 @@ async fn haptic_script_targets_btn_primary_class() {
     let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
 
     assert!(
-        html.contains(".btn-primary"),
-        "Haptic script should select elements via .btn-primary class"
+        html.contains(".haptic-heavy"),
+        "Haptic script should target haptic-heavy class for primary actions"
     );
 }
