@@ -393,7 +393,7 @@ async fn log_form(
                 }
             }
         }
-        script type="module" { (PreEscaped(include_str!("../ts/dist/scanner.js"))) }
+        script { (PreEscaped(include_str!("../ts/dist/scanner.js"))) }
     };
     layout("Log a Read", "add", &content, total_reads, unique_books)
 }
@@ -1413,7 +1413,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                     }
                 }
             }
-            script type="module" { (PreEscaped(include_str!("../ts/dist/scanner.js"))) }
+            script { (PreEscaped(include_str!("../ts/dist/scanner.js"))) }
         }
     };
     layout(&book.title, "library", &content, total_reads, unique_books)
@@ -2044,16 +2044,14 @@ fn layout(
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="";
                 link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet";
-                script src="https://cdn.tailwindcss.com" {}
-                (PreEscaped(tailwind_config()))
-                script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" {}
                 style {
+                    (PreEscaped(include_str!("../ts/dist/styles.css")))
                     (PreEscaped("@keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }"))
                     (PreEscaped("@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }"))
                     (PreEscaped(".toast { animation: slideUp 0.3s ease-out, fadeOut 0.3s ease-in 2.7s forwards; }"))
                 }
                 script {
-                    (PreEscaped(haptics_script()))
+                    (PreEscaped(include_str!("../ts/dist/haptics.js")))
                 }
             }
             body class="bg-cream text-ink font-body font-semibold min-h-screen flex flex-col" {
@@ -2062,108 +2060,9 @@ fn layout(
                     (content)
                 }
                 (footer())
-                // Hidden div for Tailwind JIT class discovery
-                div class="hidden bg-accent-red bg-accent-orange bg-accent-yellow bg-accent-green bg-accent-blue bg-accent-purple bg-accent-pink bg-accent-teal bg-accent-bg-red bg-accent-bg-orange bg-accent-bg-yellow bg-accent-bg-green bg-accent-bg-blue bg-accent-bg-purple bg-accent-bg-pink bg-accent-bg-teal border-accent-red border-accent-orange border-accent-yellow border-accent-green border-accent-blue border-accent-purple border-accent-pink border-accent-teal text-accent-red text-accent-orange text-accent-yellow text-accent-green text-accent-blue text-accent-purple text-accent-pink text-accent-teal" {}
             }
         }
     }
-}
-
-fn haptics_script() -> &'static str {
-    r"
-(function() {
-  // iOS: toggle a hidden <input type=checkbox switch> repeatedly to simulate haptic patterns.
-  // Varying duration + toggle frequency = different perceived intensities.
-  // Android: use navigator.vibrate() directly.
-  var label, checkbox, rafId;
-  function ensureDOM() {
-    if (label) return;
-    label = document.createElement('label');
-    label.setAttribute('for', 'haptic-fb');
-    label.style.position = 'fixed';
-    label.style.left = '-9999px';
-    checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.setAttribute('switch', '');
-    checkbox.id = 'haptic-fb';
-    checkbox.style.all = 'initial';
-    checkbox.style.appearance = 'auto';
-    checkbox.style.position = 'fixed';
-    checkbox.style.left = '-9999px';
-    label.appendChild(checkbox);
-    document.body.appendChild(label);
-  }
-  // duration: how long the pattern runs (ms)
-  // intensity: 0-1, controls toggle frequency (1 = every 16ms, 0.3 = every ~145ms)
-  function haptic(duration, intensity) {
-    if (navigator.vibrate) { navigator.vibrate(duration); return; }
-    ensureDOM();
-    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    label.click(); // first click synchronously (user gesture context)
-    if (duration <= 16) return; // single tick is enough for short patterns
-    var start = 0, lastToggle = 0;
-    var interval = 16 + (1 - intensity) * 184; // ms between toggles
-    function loop(t) {
-      if (!start) { start = t; lastToggle = t; }
-      if (t - start >= duration) { rafId = null; return; }
-      if (t - lastToggle >= interval) { label.click(); lastToggle = t; }
-      rafId = requestAnimationFrame(loop);
-    }
-    rafId = requestAnimationFrame(loop);
-  }
-  // Three haptic tiers:
-  //   .haptic-heavy  — primary actions: 35ms @ full intensity
-  //   .haptic-medium — secondary actions: 25ms @ 0.7 intensity
-  //   .haptic-light  — navigation/cards: single tick (10ms @ 0.4)
-  document.addEventListener('touchstart', function(e) {
-    if (!e.target.closest) return;
-    if (e.target.closest('.haptic-heavy'))  { haptic(35, 1.0); return; }
-    if (e.target.closest('.haptic-medium')) { haptic(25, 0.7); return; }
-    if (e.target.closest('.haptic-light'))  { haptic(10, 0.4); return; }
-  }, { passive: true });
-})();
-"
-}
-
-fn tailwind_config() -> &'static str {
-    r#"<script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            cream: '#FFF6EC',
-            'card-border': '#FFE4C8',
-            ink: '#3D2C1E',
-            subtext: '#9B7B62',
-            accent: {
-              red: '#FF6B6B',
-              orange: '#FFa040',
-              yellow: '#FFD036',
-              green: '#5CD08E',
-              blue: '#50B4F0',
-              purple: '#A882F0',
-              pink: '#FF82B8',
-              teal: '#40D0C8',
-            },
-            'accent-bg': {
-              red: '#FFF0F0',
-              orange: '#FFF4E8',
-              yellow: '#FFFBE8',
-              green: '#EEFFF4',
-              blue: '#EEF6FF',
-              purple: '#F4EEFF',
-              pink: '#FFF0F6',
-              teal: '#EEFFFE',
-            },
-          },
-          fontFamily: {
-            heading: ['"Baloo 2"', 'cursive'],
-            body: ['Nunito', 'sans-serif'],
-          },
-        }
-      }
-    }
-    </script>"#
 }
 
 fn nav_header(active_tab: &str, total_reads: i64, unique_books: i64) -> Markup {

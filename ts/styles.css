@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+/* Scan Rust Maud templates for class names */
+@source "../src/**/*.rs";
+
+@theme {
+  --color-cream: #fff6ec;
+  --color-card-border: #ffe4c8;
+  --color-ink: #3d2c1e;
+  --color-subtext: #9b7b62;
+
+  --color-accent-red: #ff6b6b;
+  --color-accent-orange: #ffa040;
+  --color-accent-yellow: #ffd036;
+  --color-accent-green: #5cd08e;
+  --color-accent-blue: #50b4f0;
+  --color-accent-purple: #a882f0;
+  --color-accent-pink: #ff82b8;
+  --color-accent-teal: #40d0c8;
+
+  --color-accent-bg-red: #fff0f0;
+  --color-accent-bg-orange: #fff4e8;
+  --color-accent-bg-yellow: #fffbe8;
+  --color-accent-bg-green: #eefff4;
+  --color-accent-bg-blue: #eef6ff;
+  --color-accent-bg-purple: #f4eeff;
+  --color-accent-bg-pink: #fff0f6;
+  --color-accent-bg-teal: #eefffe;
+
+  --font-heading: "Baloo 2", cursive;
+  --font-body: Nunito, sans-serif;
+}
