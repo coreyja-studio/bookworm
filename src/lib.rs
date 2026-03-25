@@ -2044,9 +2044,10 @@ fn layout(
 fn haptics_script() -> &'static str {
     r"
 (function() {
-  // iOS: toggle a hidden <input type=checkbox switch> to trigger native haptic feedback.
+  // iOS: toggle a hidden <input type=checkbox switch> repeatedly to simulate haptic patterns.
+  // Varying duration + toggle frequency = different perceived intensities.
   // Android: use navigator.vibrate() directly.
-  var label, checkbox;
+  var label, checkbox, rafId;
   function ensureDOM() {
     if (label) return;
     label = document.createElement('label');
@@ -2064,20 +2065,33 @@ fn haptics_script() -> &'static str {
     label.appendChild(checkbox);
     document.body.appendChild(label);
   }
-  function haptic(ms) {
-    if (navigator.vibrate) { navigator.vibrate(ms); return; }
+  // duration: how long the pattern runs (ms)
+  // intensity: 0-1, controls toggle frequency (1 = every 16ms, 0.3 = every ~145ms)
+  function haptic(duration, intensity) {
+    if (navigator.vibrate) { navigator.vibrate(duration); return; }
     ensureDOM();
-    label.click();
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+    label.click(); // first click synchronously (user gesture context)
+    if (duration <= 16) return; // single tick is enough for short patterns
+    var start = 0, lastToggle = 0;
+    var interval = 16 + (1 - intensity) * 184; // ms between toggles
+    function loop(t) {
+      if (!start) { start = t; lastToggle = t; }
+      if (t - start >= duration) { rafId = null; return; }
+      if (t - lastToggle >= interval) { label.click(); lastToggle = t; }
+      rafId = requestAnimationFrame(loop);
+    }
+    rafId = requestAnimationFrame(loop);
   }
-  // Event delegation with three haptic tiers:
-  //   .haptic-heavy  — primary actions (log book, read again): 25ms
-  //   .haptic-medium — nav tabs, toggles, action buttons: 15ms
-  //   .haptic-light  — book cards, pagination, sort: 10ms
+  // Three haptic tiers:
+  //   .haptic-heavy  — primary actions: 35ms @ full intensity
+  //   .haptic-medium — secondary actions: 25ms @ 0.7 intensity
+  //   .haptic-light  — navigation/cards: single tick (10ms @ 0.4)
   document.addEventListener('touchstart', function(e) {
     if (!e.target.closest) return;
-    if (e.target.closest('.haptic-heavy'))  { haptic(25); return; }
-    if (e.target.closest('.haptic-medium')) { haptic(15); return; }
-    if (e.target.closest('.haptic-light'))  { haptic(10); return; }
+    if (e.target.closest('.haptic-heavy'))  { haptic(35, 1.0); return; }
+    if (e.target.closest('.haptic-medium')) { haptic(25, 0.7); return; }
+    if (e.target.closest('.haptic-light'))  { haptic(10, 0.4); return; }
   }, { passive: true });
 })();
 "
