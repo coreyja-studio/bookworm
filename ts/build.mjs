@@ -1,23 +1,23 @@
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import pkg from "oxc-transform";
-const { transform } = pkg;
+import { build } from "esbuild";
 
-const source = readFileSync("ts/scanner.ts", "utf8");
-
-const result = transform("scanner.ts", source, {
-  typescript: {
-    onlyRemoveTypeImports: true,
-  },
+// Scanner: bundle html5-qrcode into the output
+await build({
+  entryPoints: ["ts/scanner.ts"],
+  outfile: "ts/dist/scanner.js",
+  bundle: true,
+  format: "iife",
+  target: "es2020",
+  minify: true,
 });
-
-if (result.errors.length > 0) {
-  console.error("Transform errors:");
-  for (const err of result.errors) {
-    console.error(err);
-  }
-  process.exit(1);
-}
-
-mkdirSync("ts/dist", { recursive: true });
-writeFileSync("ts/dist/scanner.js", result.code);
 console.log("Built ts/dist/scanner.js");
+
+// Haptics: bundle web-haptics into the output
+await build({
+  entryPoints: ["ts/haptics.ts"],
+  outfile: "ts/dist/haptics.js",
+  bundle: true,
+  format: "iife",
+  target: "es2020",
+  minify: true,
+});
+console.log("Built ts/dist/haptics.js");

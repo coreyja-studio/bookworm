@@ -1,14 +1,6 @@
-// Barcode scanner for ISBN lookup — loaded alongside html5-qrcode from CDN.
-// Types come from the html5-qrcode devDependency; the library itself is a global at runtime.
+// Barcode scanner for ISBN lookup — html5-qrcode bundled via esbuild.
 
-import type {
-  Html5Qrcode as Html5QrcodeType,
-  Html5QrcodeSupportedFormats as Html5QrcodeSupportedFormatsType,
-} from "html5-qrcode";
-
-// Globals provided by the html5-qrcode CDN script
-declare const Html5Qrcode: typeof Html5QrcodeType;
-declare const Html5QrcodeSupportedFormats: typeof Html5QrcodeSupportedFormatsType;
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 
 interface IsbnResult {
   title: string;
@@ -29,7 +21,7 @@ function initScanner(): void {
   const isbnForm = document.getElementById("isbn-form") as HTMLFormElement | null;
   const isDetailPage = !!isbnForm;
 
-  let scanner: Html5QrcodeType | null = null;
+  let scanner: Html5Qrcode | null = null;
 
   function startScanner(): void {
     scanner = new Html5Qrcode("scanner-container", {
@@ -119,10 +111,6 @@ function initScanner(): void {
   }
 
   scanBtn.addEventListener("click", () => {
-    if (typeof Html5Qrcode === "undefined") {
-      alert("Scanner not available. Please enter the book details manually.");
-      return;
-    }
     modal!.classList.remove("hidden");
     startScanner();
   });

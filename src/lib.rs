@@ -393,7 +393,7 @@ async fn log_form(
                 }
             }
         }
-        script type="module" { (PreEscaped(include_str!("../ts/dist/scanner.js"))) }
+        script { (PreEscaped(include_str!("../ts/dist/scanner.js"))) }
     };
     layout("Log a Read", "add", &content, total_reads, unique_books)
 }
@@ -1413,7 +1413,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                     }
                 }
             }
-            script type="module" { (PreEscaped(include_str!("../ts/dist/scanner.js"))) }
+            script { (PreEscaped(include_str!("../ts/dist/scanner.js"))) }
         }
     };
     layout(&book.title, "library", &content, total_reads, unique_books)
@@ -2046,14 +2046,13 @@ fn layout(
                 link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet";
                 script src="https://cdn.tailwindcss.com" {}
                 (PreEscaped(tailwind_config()))
-                script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js" {}
                 style {
                     (PreEscaped("@keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }"))
                     (PreEscaped("@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }"))
                     (PreEscaped(".toast { animation: slideUp 0.3s ease-out, fadeOut 0.3s ease-in 2.7s forwards; }"))
                 }
                 script {
-                    (PreEscaped(haptics_script()))
+                    (PreEscaped(include_str!("../ts/dist/haptics.js")))
                 }
             }
             body class="bg-cream text-ink font-body font-semibold min-h-screen flex flex-col" {
@@ -2067,62 +2066,6 @@ fn layout(
             }
         }
     }
-}
-
-fn haptics_script() -> &'static str {
-    r"
-(function() {
-  // iOS: toggle a hidden <input type=checkbox switch> repeatedly to simulate haptic patterns.
-  // Varying duration + toggle frequency = different perceived intensities.
-  // Android: use navigator.vibrate() directly.
-  var label, checkbox, rafId;
-  function ensureDOM() {
-    if (label) return;
-    label = document.createElement('label');
-    label.setAttribute('for', 'haptic-fb');
-    label.style.position = 'fixed';
-    label.style.left = '-9999px';
-    checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.setAttribute('switch', '');
-    checkbox.id = 'haptic-fb';
-    checkbox.style.all = 'initial';
-    checkbox.style.appearance = 'auto';
-    checkbox.style.position = 'fixed';
-    checkbox.style.left = '-9999px';
-    label.appendChild(checkbox);
-    document.body.appendChild(label);
-  }
-  // duration: how long the pattern runs (ms)
-  // intensity: 0-1, controls toggle frequency (1 = every 16ms, 0.3 = every ~145ms)
-  function haptic(duration, intensity) {
-    if (navigator.vibrate) { navigator.vibrate(duration); return; }
-    ensureDOM();
-    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
-    label.click(); // first click synchronously (user gesture context)
-    if (duration <= 16) return; // single tick is enough for short patterns
-    var start = 0, lastToggle = 0;
-    var interval = 16 + (1 - intensity) * 184; // ms between toggles
-    function loop(t) {
-      if (!start) { start = t; lastToggle = t; }
-      if (t - start >= duration) { rafId = null; return; }
-      if (t - lastToggle >= interval) { label.click(); lastToggle = t; }
-      rafId = requestAnimationFrame(loop);
-    }
-    rafId = requestAnimationFrame(loop);
-  }
-  // Three haptic tiers:
-  //   .haptic-heavy  — primary actions: 35ms @ full intensity
-  //   .haptic-medium — secondary actions: 25ms @ 0.7 intensity
-  //   .haptic-light  — navigation/cards: single tick (10ms @ 0.4)
-  document.addEventListener('touchstart', function(e) {
-    if (!e.target.closest) return;
-    if (e.target.closest('.haptic-heavy'))  { haptic(35, 1.0); return; }
-    if (e.target.closest('.haptic-medium')) { haptic(25, 0.7); return; }
-    if (e.target.closest('.haptic-light'))  { haptic(10, 0.4); return; }
-  }, { passive: true });
-})();
-"
 }
 
 fn tailwind_config() -> &'static str {

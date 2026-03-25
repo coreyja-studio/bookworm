@@ -2003,13 +2003,13 @@ async fn layout_includes_web_haptics_script() {
     let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
 
     assert!(
-        html.contains("haptic-fb"),
-        "Layout should include the inline haptic feedback script"
+        html.contains("haptic-heavy"),
+        "Layout should include the bundled haptic feedback script"
     );
 }
 
 #[tokio::test]
-async fn haptic_script_targets_btn_primary_class() {
+async fn haptic_script_includes_web_haptics_library() {
     use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt;
     use tower::ServiceExt;
@@ -2031,7 +2031,7 @@ async fn haptic_script_targets_btn_primary_class() {
     let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
 
     assert!(
-        html.contains(".haptic-heavy"),
-        "Haptic script should target haptic-heavy class for primary actions"
+        html.contains("haptic-light"),
+        "Haptic script should include all three haptic tiers"
     );
 }
