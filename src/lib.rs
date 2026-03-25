@@ -2044,9 +2044,8 @@ fn layout(
                 link rel="preconnect" href="https://fonts.googleapis.com";
                 link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="";
                 link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet";
-                script src="https://cdn.tailwindcss.com" {}
-                (PreEscaped(tailwind_config()))
                 style {
+                    (PreEscaped(include_str!("../ts/dist/styles.css")))
                     (PreEscaped("@keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }"))
                     (PreEscaped("@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }"))
                     (PreEscaped(".toast { animation: slideUp 0.3s ease-out, fadeOut 0.3s ease-in 2.7s forwards; }"))
@@ -2061,52 +2060,9 @@ fn layout(
                     (content)
                 }
                 (footer())
-                // Hidden div for Tailwind JIT class discovery
-                div class="hidden bg-accent-red bg-accent-orange bg-accent-yellow bg-accent-green bg-accent-blue bg-accent-purple bg-accent-pink bg-accent-teal bg-accent-bg-red bg-accent-bg-orange bg-accent-bg-yellow bg-accent-bg-green bg-accent-bg-blue bg-accent-bg-purple bg-accent-bg-pink bg-accent-bg-teal border-accent-red border-accent-orange border-accent-yellow border-accent-green border-accent-blue border-accent-purple border-accent-pink border-accent-teal text-accent-red text-accent-orange text-accent-yellow text-accent-green text-accent-blue text-accent-purple text-accent-pink text-accent-teal" {}
             }
         }
     }
-}
-
-fn tailwind_config() -> &'static str {
-    r#"<script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            cream: '#FFF6EC',
-            'card-border': '#FFE4C8',
-            ink: '#3D2C1E',
-            subtext: '#9B7B62',
-            accent: {
-              red: '#FF6B6B',
-              orange: '#FFa040',
-              yellow: '#FFD036',
-              green: '#5CD08E',
-              blue: '#50B4F0',
-              purple: '#A882F0',
-              pink: '#FF82B8',
-              teal: '#40D0C8',
-            },
-            'accent-bg': {
-              red: '#FFF0F0',
-              orange: '#FFF4E8',
-              yellow: '#FFFBE8',
-              green: '#EEFFF4',
-              blue: '#EEF6FF',
-              purple: '#F4EEFF',
-              pink: '#FFF0F6',
-              teal: '#EEFFFE',
-            },
-          },
-          fontFamily: {
-            heading: ['"Baloo 2"', 'cursive'],
-            body: ['Nunito', 'sans-serif'],
-          },
-        }
-      }
-    }
-    </script>"#
 }
 
 fn nav_header(active_tab: &str, total_reads: i64, unique_books: i64) -> Markup {

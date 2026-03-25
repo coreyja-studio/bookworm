@@ -13,11 +13,13 @@
     "web-haptics": "^0.0.6"
   },
   "devDependencies": {
-    "esbuild": "^0.25",
-    "typescript": "^5.7",
-    "eslint": "^9",
     "@eslint/js": "^9",
-    "typescript-eslint": "^8",
-    "prettier": "^3"
+    "@tailwindcss/cli": "^4.2.2",
+    "esbuild": "^0.25",
+    "eslint": "^9",
+    "prettier": "^3",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.7",
+    "typescript-eslint": "^8"
   }
 }

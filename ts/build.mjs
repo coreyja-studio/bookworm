@@ -1,4 +1,5 @@
 import { build } from "esbuild";
+import { execSync } from "node:child_process";
 
 // Scanner: bundle html5-qrcode into the output
 await build({
@@ -21,3 +22,9 @@ await build({
   minify: true,
 });
 console.log("Built ts/dist/haptics.js");
+
+// Tailwind CSS: scan .rs files for class usage, output optimized CSS
+execSync("pnpm tailwindcss -i ts/styles.css -o ts/dist/styles.css --minify", {
+  stdio: "inherit",
+});
+console.log("Built ts/dist/styles.css");
