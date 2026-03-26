@@ -3,6 +3,15 @@
 /* Scan Rust Maud templates for class names */
 @source "../src/**/*.rs";
 
+/*
+ * Safelist for dynamically-constructed class names.
+ *
+ * The Rust templates build class strings via format!() with a {color} variable
+ * cycling through [red, orange, yellow, green, blue, purple, pink, teal].
+ * Tailwind's scanner can't detect these, so we list them explicitly.
+ */
+@source inline("bg-accent-red bg-accent-orange bg-accent-yellow bg-accent-green bg-accent-blue bg-accent-purple bg-accent-pink bg-accent-teal bg-accent-bg-red bg-accent-bg-orange bg-accent-bg-yellow bg-accent-bg-green bg-accent-bg-blue bg-accent-bg-purple bg-accent-bg-pink bg-accent-bg-teal border-accent-red border-accent-orange border-accent-yellow border-accent-green border-accent-blue border-accent-purple border-accent-pink border-accent-teal");
+
 @theme {
   --color-cream: #fff6ec;
   --color-card-border: #ffe4c8;
