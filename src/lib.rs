@@ -432,8 +432,10 @@ async fn log_read(State(state): State<AppState>, Form(input): Form<LogReadInput>
 
     let book = if let Some(book_id) = existing_by_isbn {
         // Book found by ISBN — update title/author/cover (user may have corrected them)
+        // Preserve existing author if the new value is empty (API may not return one)
         sqlx::query_scalar!(
-            r#"UPDATE books SET title = $1, author = $2,
+            r#"UPDATE books SET title = $1,
+                   author = COALESCE(NULLIF($2, ''), author),
                    cover_url = COALESCE($3, cover_url)
                WHERE book_id = $4 RETURNING book_id"#,
             title,
@@ -445,11 +447,13 @@ async fn log_read(State(state): State<AppState>, Form(input): Form<LogReadInput>
         .await
     } else {
         // No ISBN match — upsert by title (handles books without ISBNs)
+        // Preserve existing author on conflict if the new value is empty
         sqlx::query_scalar!(
             r#"INSERT INTO books (title, author, isbn, cover_url)
                VALUES ($1, $2, $3, $4)
                ON CONFLICT ((LOWER(title))) DO UPDATE
                  SET isbn = COALESCE(EXCLUDED.isbn, books.isbn),
+                     author = COALESCE(NULLIF(EXCLUDED.author, ''), books.author),
                      cover_url = COALESCE(EXCLUDED.cover_url, books.cover_url)
                RETURNING book_id"#,
             title,
