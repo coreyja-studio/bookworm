@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "UPDATE books SET title = $1, author = $2,\n                   cover_url = COALESCE($3, cover_url)\n               WHERE book_id = $4 RETURNING book_id",
+  "query": "UPDATE books SET title = $1,\n                   author = COALESCE(NULLIF($2, ''), author),\n                   cover_url = COALESCE($3, cover_url)\n               WHERE book_id = $4 RETURNING book_id",
   "describe": {
     "columns": [
       {
@@ -21,5 +21,5 @@
       false
     ]
   },
-  "hash": "04eed0d10526e25e51174ff07d016fdadb8f12178ea3ec297df1882a7fe09e92"
+  "hash": "f53cbeaa5f95542c17c43ec9fca15ced9875b2012faf7060c93aeaaf8f6f2bdf"
 }
