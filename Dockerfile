@@ -8,6 +8,7 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY ts ./ts
+COPY src ./src
 RUN pnpm run build
 
 FROM rust:1.93 AS builder
