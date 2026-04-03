@@ -1854,6 +1854,22 @@ async fn isbn_lookup(
         return Err(axum::http::StatusCode::BAD_REQUEST);
     }
 
+    // Check local DB first so user edits persist across re-scans
+    if let Ok(Some(book)) = sqlx::query_as::<_, (String, String, Option<String>)>(
+        "SELECT title, author, cover_url FROM books WHERE isbn = $1",
+    )
+    .bind(&isbn)
+    .fetch_optional(&state.db)
+    .await
+    {
+        return Ok(axum::Json(IsbnResult {
+            title: book.0,
+            author: book.1,
+            cover_url: book.2,
+            isbn: isbn.to_string(),
+        }));
+    }
+
     if let Some(result) = lookup_open_library(&state.http_client, &isbn).await {
         return Ok(axum::Json(result));
     }
