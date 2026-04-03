@@ -1866,7 +1866,7 @@ async fn isbn_lookup(
             title: book.0,
             author: book.1,
             cover_url: book.2,
-            isbn: isbn.to_string(),
+            isbn: isbn.clone(),
         }));
     }
 
