@@ -143,6 +143,7 @@ pub fn routes(app_state: AppState) -> axum::Router {
         .route("/history", get(history))
         .route("/progress", get(progress))
         .route("/stats", get(stats))
+        .route("/api/search", get(book_search))
         .route("/api/isbn/{isbn}", get(isbn_lookup))
         .route("/books/{book_id}", get(book_detail))
         .route("/books/{book_id}/read-again", post(book_read_again))
@@ -316,17 +317,29 @@ async fn log_form(
                 "Book logged! 📖"
             }
         }
-        div class="bg-white rounded-2xl border border-card-border p-6 shadow-sm" {
-            div class="flex justify-between items-center mb-4" {
-                h2 class="font-heading text-2xl font-bold" { "Log a Book 📖" }
-                button type="button" id="scan-btn"
-                    class="text-2xl hover:scale-110 transition-transform haptic-medium" { "📷" }
+
+        // Fuzzy search bar — primary way to find and re-log existing books
+        div id="search-area" class="mb-4" {
+            div class="bg-white rounded-2xl border border-card-border p-4 shadow-sm" {
+                div class="flex items-center gap-2 mb-2" {
+                    h2 class="font-heading text-xl font-bold flex-1" { "Find a Book" }
+                    button type="button" id="scan-btn"
+                        class="text-2xl hover:scale-110 transition-transform haptic-medium" { "📷" }
+                }
+                input type="text" id="search-input" autocomplete="off"
+                    placeholder="Search by title or author..."
+                    class="w-full bg-accent-bg-orange rounded-xl px-4 py-3 border-none focus:ring-2 focus:ring-accent-orange focus:outline-none";
             }
+            div id="search-results" class="hidden mt-2 bg-white rounded-2xl border border-card-border p-2 shadow-sm space-y-1" {}
+        }
+
+        div id="log-form-card" class="bg-white rounded-2xl border border-card-border p-6 shadow-sm" {
+            h2 class="font-heading text-xl font-bold mb-4" { "Or Log a New Book" }
             form method="post" action="/log" class="space-y-4" {
                 div {
                     label for="title" class="block text-xs font-bold text-subtext uppercase tracking-wide mb-1" { "TITLE" }
                     input type="text" name="title" id="title" required
-                        placeholder="e.g., Goodnight Moon 🌙"
+                        placeholder="e.g., Goodnight Moon"
                         class="w-full bg-accent-bg-orange rounded-xl px-4 py-3 border-none focus:ring-2 focus:ring-accent-orange focus:outline-none";
                 }
                 div {
@@ -394,6 +407,7 @@ async fn log_form(
             }
         }
         script { (PreEscaped(include_str!("../ts/dist/scanner.js"))) }
+        script { (PreEscaped(include_str!("../ts/dist/search.js"))) }
     };
     layout("Log a Read", "add", &content, total_reads, unique_books)
 }
@@ -1829,6 +1843,60 @@ async fn merge_books(
     }
 
     Redirect::to(&format!("/books/{book_id}"))
+}
+
+// ---------------------------------------------------------------------------
+// Fuzzy Book Search
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct SearchParams {
+    q: String,
+}
+
+#[derive(Serialize)]
+struct SearchResult {
+    book_id: uuid::Uuid,
+    title: String,
+    author: String,
+    read_count: i64,
+    has_cover: bool,
+}
+
+async fn book_search(
+    State(state): State<AppState>,
+    Query(params): Query<SearchParams>,
+) -> axum::Json<Vec<SearchResult>> {
+    let q = params.q.trim().to_string();
+    if q.is_empty() {
+        return axum::Json(Vec::new());
+    }
+
+    // Use pg_trgm similarity for fuzzy matching on title and author.
+    // Results are ranked by best similarity score (title or author).
+    let results = sqlx::query_as!(
+        SearchResult,
+        r#"SELECT b.book_id, b.title, b.author,
+               COUNT(r.read_id) as "read_count!",
+               BOOL_OR(b.cover_image IS NOT NULL OR b.cover_url IS NOT NULL) as "has_cover!"
+           FROM books b
+           LEFT JOIN reads r ON r.book_id = b.book_id AND r.deleted_at IS NULL
+           WHERE b.title % $1 OR b.author % $1
+              OR b.title ILIKE '%' || $1 || '%'
+              OR b.author ILIKE '%' || $1 || '%'
+           GROUP BY b.book_id, b.title, b.author
+           ORDER BY GREATEST(similarity(b.title, $1), similarity(b.author, $1)) DESC
+           LIMIT 10"#,
+        q
+    )
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_else(|e| {
+        tracing::error!("Fuzzy search failed: {e}");
+        Vec::new()
+    });
+
+    axum::Json(results)
 }
 
 // ---------------------------------------------------------------------------
