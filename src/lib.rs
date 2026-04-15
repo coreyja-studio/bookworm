@@ -330,7 +330,7 @@ async fn log_form(
                     placeholder="Search by title or author..."
                     class="w-full bg-accent-bg-orange rounded-xl px-4 py-3 border-none focus:ring-2 focus:ring-accent-orange focus:outline-none";
             }
-            div id="search-results" class="hidden mt-2 bg-white rounded-2xl border border-card-border p-2 shadow-sm space-y-1" {}
+            div id="search-results" class="hidden mt-2 bg-white rounded-2xl border border-card-border p-2 shadow-sm space-y-1 max-h-80 overflow-y-auto" {}
         }
 
         div id="log-form-card" class="bg-white rounded-2xl border border-card-border p-6 shadow-sm" {
@@ -1873,7 +1873,9 @@ async fn book_search(
     }
 
     // Use pg_trgm similarity for fuzzy matching on title and author.
+    // Also compare with punctuation stripped so "cats" matches "Cat's".
     // Results are ranked by best similarity score (title or author).
+    let q_stripped = q.replace(|c: char| !c.is_alphanumeric() && c != ' ', "");
     let results = sqlx::query_as!(
         SearchResult,
         r#"SELECT b.book_id, b.title, b.author,
@@ -1884,10 +1886,13 @@ async fn book_search(
            WHERE b.title % $1 OR b.author % $1
               OR b.title ILIKE '%' || $1 || '%'
               OR b.author ILIKE '%' || $1 || '%'
+              OR REGEXP_REPLACE(b.title, '[^a-zA-Z0-9 ]', '', 'g') ILIKE '%' || $2 || '%'
+              OR REGEXP_REPLACE(b.author, '[^a-zA-Z0-9 ]', '', 'g') ILIKE '%' || $2 || '%'
            GROUP BY b.book_id, b.title, b.author
            ORDER BY GREATEST(similarity(b.title, $1), similarity(b.author, $1)) DESC
            LIMIT 10"#,
-        q
+        q,
+        q_stripped
     )
     .fetch_all(&state.db)
     .await
