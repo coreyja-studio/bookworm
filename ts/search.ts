@@ -141,15 +141,37 @@ function initSearch(): void {
     }
   });
 
-  // Dismiss results when clicking outside
-  document.addEventListener("click", (e) => {
+  // Dismiss results when tapping outside the search area.
+  // Track whether a touch moved (scroll) so we don't dismiss on scroll.
+  let touchMoved = false;
+  document.addEventListener("touchstart", () => {
+    touchMoved = false;
+  });
+  document.addEventListener("touchmove", () => {
+    touchMoved = true;
+  });
+  document.addEventListener("touchend", (e) => {
+    if (touchMoved) return; // was a scroll, not a tap
     const target = e.target as HTMLElement;
     const searchArea = document.getElementById("search-area");
     if (searchArea && !searchArea.contains(target)) {
-      results!.classList.add("hidden");
-      if (formCard) formCard.classList.remove("hidden");
+      dismissResults();
     }
   });
+
+  // Desktop: dismiss on click outside
+  document.addEventListener("mousedown", (e) => {
+    const target = e.target as HTMLElement;
+    const searchArea = document.getElementById("search-area");
+    if (searchArea && !searchArea.contains(target)) {
+      dismissResults();
+    }
+  });
+
+  function dismissResults(): void {
+    results!.classList.add("hidden");
+    if (formCard) formCard.classList.remove("hidden");
+  }
 }
 
 function escapeHtml(str: string): string {
