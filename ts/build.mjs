@@ -23,6 +23,17 @@ await build({
 });
 console.log("Built ts/dist/haptics.js");
 
+// Search: live fuzzy search for books
+await build({
+  entryPoints: ["ts/search.ts"],
+  outfile: "ts/dist/search.js",
+  bundle: true,
+  format: "iife",
+  target: "es2020",
+  minify: true,
+});
+console.log("Built ts/dist/search.js");
+
 // Tailwind CSS: scan .rs files for class usage, output optimized CSS
 execSync("pnpm tailwindcss -i ts/styles.css -o ts/dist/styles.css --minify", {
   stdio: "inherit",
