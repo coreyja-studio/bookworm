@@ -23,6 +23,17 @@ await build({
 });
 console.log("Built ts/dist/haptics.js");
 
+// Scroll restore: preserve scrollY across form-POST navigations
+await build({
+  entryPoints: ["ts/scroll-restore.ts"],
+  outfile: "ts/dist/scroll-restore.js",
+  bundle: true,
+  format: "iife",
+  target: "es2020",
+  minify: true,
+});
+console.log("Built ts/dist/scroll-restore.js");
+
 // Search: live fuzzy search for books
 await build({
   entryPoints: ["ts/search.ts"],

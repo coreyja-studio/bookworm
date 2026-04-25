@@ -987,6 +987,35 @@ async fn pages_include_library_tab_link() {
 }
 
 #[tokio::test]
+async fn library_includes_scroll_restore_script() {
+    use axum::http::{Request, StatusCode};
+    use http_body_util::BodyExt;
+    use tower::ServiceExt;
+
+    let app = make_test_router().await;
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/library")
+                .body(axum::body::Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let html = std::str::from_utf8(&body).expect("response body should be valid UTF-8");
+
+    // Marker is the event name the scroll-restore module subscribes to.
+    assert!(
+        html.contains("pagereveal"),
+        "Library page should embed the scroll-restore bundle (looked for the 'pagereveal' event name)"
+    );
+}
+
+#[tokio::test]
 async fn pages_include_progress_tab_link() {
     use axum::http::{Request, StatusCode};
     use http_body_util::BodyExt;

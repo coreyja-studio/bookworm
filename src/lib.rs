@@ -2142,9 +2142,14 @@ fn layout(
                     (PreEscaped("@keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }"))
                     (PreEscaped("@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }"))
                     (PreEscaped(".toast { animation: slideUp 0.3s ease-out, fadeOut 0.3s ease-in 2.7s forwards; }"))
+                    (PreEscaped("@view-transition { navigation: auto; }"))
+                    (PreEscaped("::view-transition-old(*),::view-transition-new(*){animation:none}"))
                 }
                 script {
                     (PreEscaped(include_str!("../ts/dist/haptics.js")))
+                }
+                script {
+                    (PreEscaped(include_str!("../ts/dist/scroll-restore.js")))
                 }
             }
             body class="bg-cream text-ink font-body font-semibold min-h-screen flex flex-col" {
@@ -2559,7 +2564,7 @@ pub async fn run_cron(
         app_state,
         cron_registry(),
         cja::chrono_tz::US::Eastern,
-        std::time::Duration::from_secs(60),
+        std::time::Duration::from_mins(1),
     )
     .run(shutdown_token)
     .await
