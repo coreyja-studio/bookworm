@@ -17,7 +17,9 @@ fn main() -> color_eyre::Result<()> {
 }
 
 async fn run_application() -> cja::Result<()> {
-    setup_tracing("bookworm")?;
+    // Keep the Eyes shutdown handle alive for the lifetime of the app: dropping
+    // it stops the Eyes telemetry exporter (configured via EYES_ORG_ID/EYES_APP_ID).
+    let eyes_shutdown_handle = setup_tracing("bookworm")?;
 
     let app_state = AppState::from_env().await?;
 
@@ -47,6 +49,13 @@ async fn run_application() -> cja::Result<()> {
     let result = futures::future::try_join_all(futures).await;
 
     shutdown_handle.abort();
+
+    if let Some(eyes) = eyes_shutdown_handle {
+        info!("Flushing Eyes telemetry");
+        if let Err(err) = eyes.shutdown().await {
+            eprintln!("Failed to flush Eyes telemetry on shutdown: {err}");
+        }
+    }
 
     result?;
     Ok(())
