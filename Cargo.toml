@@ -22,6 +22,7 @@ unsafe_code = "forbid"
 
 [dependencies]
 cja = { git = "https://github.com/coreyja/cja", branch = "main" }
+async-trait = "0.1"
 
 axum = { version = "0.8", features = ["multipart"] }
 maud = { version = "0.27", features = ["axum"] }

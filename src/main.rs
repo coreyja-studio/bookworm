@@ -1,4 +1,4 @@
-use bookworm::{AppState, routes};
+use bookworm::{AppState, Jobs, cron_registry, routes};
 use cja::{
     color_eyre,
     server::run_server,
@@ -25,8 +25,22 @@ async fn run_application() -> cja::Result<()> {
 
     let shutdown_token = cja::jobs::CancellationToken::new();
 
+    // Build the cron registry once so it can seed the Eyes boot manifest before
+    // being handed off to the cron worker.
+    let cron_registry = cron_registry();
+
+    // Emit this app's shape (job types, cron schedules, build version) to Eyes
+    // at boot; fire-and-forget and a no-op unless EYES_ORG_ID/EYES_APP_ID are
+    // set. bookworm has no jobs (empty registry) and no git SHA wired into the
+    // build, so pass None for the SHA.
+    cja::eyes_manifest::send_boot_manifest::<Jobs, AppState>(
+        Some(env!("CARGO_PKG_VERSION")),
+        None,
+        Some(&cron_registry),
+    );
+
     info!("Spawning application tasks");
-    let futures = spawn_application_tasks(&app_state, &shutdown_token);
+    let futures = spawn_application_tasks(&app_state, cron_registry, &shutdown_token);
 
     let shutdown_handle = tokio::spawn(async move {
         let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
@@ -63,6 +77,7 @@ async fn run_application() -> cja::Result<()> {
 
 fn spawn_application_tasks(
     app_state: &AppState,
+    cron_registry: cja::cron::CronRegistry<AppState>,
     shutdown_token: &cja::jobs::CancellationToken,
 ) -> Vec<tokio::task::JoinHandle<std::result::Result<(), cja::color_eyre::Report>>> {
     let mut futures = vec![];
@@ -78,9 +93,9 @@ fn spawn_application_tasks(
         info!("Cron Enabled");
         let app = app_state.clone();
         let token = shutdown_token.clone();
-        futures.push(tokio::spawn(
-            async move { bookworm::run_cron(app, token).await },
-        ));
+        futures.push(tokio::spawn(async move {
+            bookworm::run_cron(app, cron_registry, token).await
+        }));
     } else {
         info!("Cron Disabled");
     }
