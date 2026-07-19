@@ -2536,6 +2536,28 @@ pub async fn send_weekly_email(app_state: AppState) -> Result<()> {
     Ok(())
 }
 
+// bookworm has no background jobs, but the Eyes boot manifest is generic over a
+// `JobRegistry`. Provide an empty registry so the manifest can report an
+// (empty) job list at startup. The `impl_job_registry!` macro requires at least
+// one job type, so implement the trait by hand.
+pub struct Jobs;
+
+#[async_trait::async_trait]
+impl cja::jobs::registry::JobRegistry<AppState> for Jobs {
+    async fn run_job(
+        &self,
+        job: &cja::jobs::worker::JobFromDB,
+        _app_state: AppState,
+        _cancellation_token: cja::jobs::CancellationToken,
+    ) -> cja::Result<()> {
+        Err(eyre!("Unknown job type: {}", job.name))
+    }
+
+    fn job_names() -> &'static [&'static str] {
+        &[]
+    }
+}
+
 #[must_use]
 pub fn cron_registry() -> cja::cron::CronRegistry<AppState> {
     let mut registry = cja::cron::CronRegistry::new();
@@ -2558,11 +2580,12 @@ pub fn cron_registry() -> cja::cron::CronRegistry<AppState> {
 
 pub async fn run_cron(
     app_state: AppState,
+    registry: cja::cron::CronRegistry<AppState>,
     shutdown_token: cja::jobs::CancellationToken,
 ) -> Result<()> {
     cja::cron::Worker::new_with_timezone(
         app_state,
-        cron_registry(),
+        registry,
         cja::chrono_tz::US::Eastern,
         std::time::Duration::from_mins(1),
     )
