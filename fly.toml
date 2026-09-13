@@ -3,6 +3,9 @@ primary_region = 'ewr'
 
 [build]
 
+[env]
+  EYES_TRANSPORT = 'batching'
+
 [mounts]
   source = 'bookworm_data'
   destination = '/data'

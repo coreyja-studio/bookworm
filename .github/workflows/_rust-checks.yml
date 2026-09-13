@@ -63,9 +63,9 @@ jobs:
 
       - name: Check sqlx prepare is up to date
         run: |
-          cargo sqlx prepare --workspace --check 2>&1 || {
+          cargo sqlx prepare --workspace --check -- --all-targets 2>&1 || {
             echo "=== Check failed, running prepare to see diff ==="
-            cargo sqlx prepare --workspace
+            cargo sqlx prepare --workspace -- --all-targets
             git diff --stat .sqlx/
             exit 1
           }
