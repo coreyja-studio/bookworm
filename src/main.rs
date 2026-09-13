@@ -1,111 +1,112 @@
 use bookworm::{AppState, cron_registry, observability, routes};
 use cja::{
     color_eyre,
-    server::run_server,
+    jobs::CancellationToken,
     setup::{TracingConfig, setup_sentry},
 };
+use std::time::Duration;
 use tracing::info;
+
+mod runtime;
 
 fn main() -> color_eyre::Result<()> {
     let _sentry_guard = setup_sentry();
-
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)
         .enable_all()
         .build()?
-        .block_on(async { run_application().await })
+        .block_on(run_application())
 }
 
 async fn run_application() -> cja::Result<()> {
-    // Keep the Eyes shutdown handle alive for the lifetime of the app: dropping
-    // it stops the Eyes telemetry exporter (configured via EYES_ORG_ID/EYES_APP_ID).
     let identity = eyes_subscriber::ProcessIdentity::new(observability::ROLE);
     let eyes_shutdown_handle = TracingConfig::new("bookworm")
         .process(identity.clone())
         .init()?;
-
-    let app_state = AppState::from_env().await?;
-
-    let shutdown_token = cja::jobs::CancellationToken::new();
-
-    // Build the cron registry once so it can seed the Eyes boot manifest before
-    // being handed off to the cron worker.
-    let server_enabled = is_feature_enabled("SERVER");
-    let cron_registry = is_feature_enabled("CRON").then(cron_registry);
-
-    let manifest = observability::manifest(identity, cron_registry.as_ref())
-        .map_err(|error| color_eyre::eyre::eyre!(error))?;
-    cja::eyes_manifest::send_manifest(manifest);
-
-    info!("Spawning application tasks");
-    let futures =
-        spawn_application_tasks(&app_state, server_enabled, cron_registry, &shutdown_token);
-
-    let shutdown_handle = tokio::spawn(async move {
-        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("Failed to create SIGTERM handler");
-        let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
-            .expect("Failed to create SIGINT handler");
-
-        tokio::select! {
-            _ = sigterm.recv() => {
-                info!("Received SIGTERM, initiating graceful shutdown");
-            }
-            _ = sigint.recv() => {
-                info!("Received SIGINT, initiating graceful shutdown");
-            }
-        }
-
-        shutdown_token.cancel();
-    });
-
-    let result = futures::future::try_join_all(futures).await;
-
-    shutdown_handle.abort();
-
+    let result = run_services(identity).await;
+    if let Err(error) = &result {
+        tracing::error!(error = %format!("{error:#}"), "Bookworm stopped with an error");
+    }
     if let Some(eyes) = eyes_shutdown_handle {
         info!("Flushing Eyes telemetry");
-        if let Err(err) = eyes.shutdown().await {
-            eprintln!("Failed to flush Eyes telemetry on shutdown: {err}");
+        match tokio::time::timeout(Duration::from_secs(5), eyes.shutdown()).await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => eprintln!("Failed to flush Eyes telemetry: {error}"),
+            Err(_) => eprintln!("Eyes telemetry flush timed out"),
         }
     }
+    result
+}
 
-    result?;
-    Ok(())
+async fn run_services(identity: eyes_subscriber::ProcessIdentity) -> cja::Result<()> {
+    let app_state = AppState::from_env().await?;
+    let server_enabled = is_feature_enabled("SERVER");
+    let cron_registry = is_feature_enabled("CRON").then(cron_registry);
+    if !server_enabled && cron_registry.is_none() {
+        info!("No application tasks enabled");
+        return Ok(());
+    }
+    let manifest = observability::manifest(identity, cron_registry.as_ref())
+        .map_err(|error| color_eyre::eyre::eyre!(error))?;
+    let shutdown = CancellationToken::new();
+    let signal_handle = spawn_signal_listener(shutdown.clone())?;
+    let heartbeat = observability::start(&manifest).await;
+    let tasks = spawn_application_tasks(&app_state, server_enabled, cron_registry, &shutdown);
+    let result = tasks.supervise(shutdown, Duration::from_secs(30)).await;
+    signal_handle.abort();
+    let _ = signal_handle.await;
+    if let Some(heartbeat) = heartbeat
+        && let Err(error) = heartbeat.shutdown().await
+    {
+        tracing::warn!(%error, "Eyes process shutdown report failed");
+    }
+    result
+}
+
+fn spawn_signal_listener(shutdown: CancellationToken) -> cja::Result<tokio::task::JoinHandle<()>> {
+    use tokio::signal::unix::{SignalKind, signal};
+    let mut sigterm = signal(SignalKind::terminate())?;
+    let mut sigint = signal(SignalKind::interrupt())?;
+    Ok(tokio::spawn(async move {
+        tokio::select! {
+            _ = sigterm.recv() => info!("Received SIGTERM, initiating graceful shutdown"),
+            _ = sigint.recv() => info!("Received SIGINT, initiating graceful shutdown"),
+        }
+        shutdown.cancel();
+    }))
 }
 
 fn spawn_application_tasks(
     app_state: &AppState,
     server_enabled: bool,
     cron_registry: Option<cja::cron::CronRegistry<AppState>>,
-    shutdown_token: &cja::jobs::CancellationToken,
-) -> Vec<tokio::task::JoinHandle<std::result::Result<(), cja::color_eyre::Report>>> {
-    let mut futures = vec![];
-
+    shutdown: &CancellationToken,
+) -> runtime::ApplicationTasks {
+    let mut tasks = runtime::ApplicationTasks::default();
     if server_enabled {
         info!("Server Enabled");
-        futures.push(tokio::spawn(run_server(routes(app_state.clone()))));
+        tasks.spawn(
+            "HTTP server",
+            cja::server::run_server_until(
+                routes(app_state.clone()),
+                shutdown.clone().cancelled_owned(),
+            ),
+        );
     } else {
         info!("Server Disabled");
     }
-
     if let Some(cron_registry) = cron_registry {
         info!("Cron Enabled");
-        let app = app_state.clone();
-        let token = shutdown_token.clone();
-        futures.push(tokio::spawn(async move {
-            bookworm::run_cron(app, cron_registry, token).await
-        }));
+        tasks.spawn(
+            "Cron worker",
+            bookworm::run_cron(app_state.clone(), cron_registry, shutdown.clone()),
+        );
     } else {
         info!("Cron Disabled");
     }
-
-    info!("All application tasks spawned successfully");
-    futures
+    tasks
 }
 
 fn is_feature_enabled(feature: &str) -> bool {
-    let env_var_name = format!("{feature}_DISABLED");
-    let value = std::env::var(&env_var_name).unwrap_or_else(|_| "false".to_string());
-    value != "true"
+    std::env::var(format!("{feature}_DISABLED")).unwrap_or_else(|_| "false".to_string()) != "true"
 }

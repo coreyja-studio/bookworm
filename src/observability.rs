@@ -2,8 +2,10 @@
 use crate::{AppState, Jobs};
 use eyes_subscriber::{
     AggregateFunction as Agg, AppManifest, DashboardItem as Item, DashboardSection as Section,
-    NamedDashboard, NamedMetric, NamedMetricBuilder as Metric, ProcessIdentity,
+    ExpectedProcessRole, NamedDashboard, NamedMetric, NamedMetricBuilder as Metric,
+    ProcessHeartbeat, ProcessHeartbeatConfig, ProcessHeartbeatHandle, ProcessIdentity,
 };
+use std::time::Duration;
 
 pub const ROLE: &str = "bookworm";
 pub const CRON_TIMEZONE: cja::chrono_tz::Tz = cja::chrono_tz::America::New_York;
@@ -29,9 +31,39 @@ pub fn manifest(
     metrics.extend(email_metrics()?);
     Ok(manifest
         .process(identity)
+        .expected_process_roles(vec![ExpectedProcessRole::new(ROLE).min_instances(0)])
         .monitors(vec![])
         .metrics(metrics)
         .dashboards(vec![dashboard()?]))
+}
+
+/// Register before heartbeats. Observability failures never prevent app startup.
+pub async fn start(manifest: &AppManifest) -> Option<ProcessHeartbeatHandle> {
+    let (Ok(org), Ok(app)) = (std::env::var("EYES_ORG_ID"), std::env::var("EYES_APP_ID")) else {
+        return None;
+    };
+    let register = async {
+        let org = org.parse()?;
+        let app = app.parse()?;
+        let base = std::env::var("EYES_URL")
+            .unwrap_or_else(|_| "https://eyes.coreyja.com".into())
+            .parse()?;
+        eyes_subscriber::send_manifest_from_env(manifest).await?;
+        Ok::<_, color_eyre::Report>(ProcessHeartbeat::spawn(
+            ProcessHeartbeatConfig::from_manifest(base, org, app, manifest)?,
+        )?)
+    };
+    match tokio::time::timeout(Duration::from_secs(10), register).await {
+        Ok(Ok(handle)) => Some(handle),
+        Ok(Err(error)) => {
+            tracing::warn!(error = %format!("{error:#}"), "Eyes process registration failed");
+            None
+        }
+        Err(_) => {
+            tracing::warn!("Eyes process registration timed out");
+            None
+        }
+    }
 }
 
 fn count(id: &str, title: &str, path: &str, value: &str) -> Result<Metric, String> {

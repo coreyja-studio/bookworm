@@ -1,5 +1,7 @@
 app = 'bookworm-coreyja'
 primary_region = 'ewr'
+kill_signal = 'SIGTERM'
+kill_timeout = 60
 
 [build]
 
