@@ -11,7 +11,7 @@ COPY ts ./ts
 COPY src ./src
 RUN pnpm run build
 
-FROM rust:1.93 AS builder
+FROM rust:1.93-bookworm AS builder
 
 WORKDIR /app
 
@@ -22,6 +22,8 @@ COPY --from=ts-builder /app/ts/dist ./ts/dist
 COPY migrations ./migrations
 
 ENV SQLX_OFFLINE=true
+ARG GIT_SHA
+ENV GIT_SHA=$GIT_SHA
 RUN cargo build --release --bin bookworm
 
 FROM debian:bookworm-slim
