@@ -1,17 +1,27 @@
 #!/bin/sh
 set -e
 
-# Start tailscaled with state stored on the persistent volume
-/app/tailscaled --state=/data/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
+app_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 
-# Wait for tailscaled to be ready
-sleep 2
+# The persistent daemon reconnects to the tailnet independently of Bookworm.
+"$app_dir/tailscaled" --state=/data/tailscale/tailscaled.state --socket=/var/run/tailscale/tailscaled.sock &
 
-# Bring up tailscale with auth key
-/app/tailscale up --hostname=bookworm --authkey="${TS_AUTHKEY}"
+# Tailnet access serves the private web UI. A rejected/expired login must not
+# prevent the email cron and telemetry exporter from starting. Retry setup
+# without probing the HTTP app; Fly's init cleans up children when it exits.
+(
+    until "$app_dir/tailscale" up --timeout=30s --hostname=bookworm --authkey="${TS_AUTHKEY}"; do
+        echo "Bookworm tailnet login unavailable; retrying in 30 seconds" >&2
+        sleep 30
+    done
 
-# Serve HTTPS on the tailnet, proxying to the app on port 3000
-/app/tailscale serve --bg 3000
+    until "$app_dir/tailscale" serve --bg 3000; do
+        echo "Bookworm tailnet HTTPS setup unavailable; retrying in 30 seconds" >&2
+        sleep 30
+    done
 
-# Start the application
-exec /app/bookworm
+    echo "Bookworm tailnet HTTPS configured"
+) &
+
+# Preserve direct signal delivery and the application's exit status.
+exec "$app_dir/bookworm"

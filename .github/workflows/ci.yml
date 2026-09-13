@@ -10,6 +10,15 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  startup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check entrypoint syntax and startup behavior
+        run: |
+          sh -n start.sh
+          python3 -B -m unittest discover -s tests -p startup_test.py
+
   fmt:
     uses: ./.github/workflows/_fmt.yml
 
@@ -21,7 +30,7 @@ jobs:
 
   ready:
     if: always()
-    needs: [fmt, rust-checks, ts-checks]
+    needs: [fmt, rust-checks, ts-checks, startup]
     runs-on: ubuntu-latest
     steps:
       - name: Check results
