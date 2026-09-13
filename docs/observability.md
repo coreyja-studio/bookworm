@@ -39,3 +39,16 @@ New telemetry fields exclude addresses and message contents.
 Build the TypeScript assets before Rust (`pnpm install --frozen-lockfile`,
 `pnpm run build`); Rust embeds files from `ts/dist`. Database tests use local
 PostgreSQL. Email tests use a stub transport and never connect to SMTP.
+
+
+The container starts Bookworm independently of Tailscale login and HTTPS setup.
+An expired node key or rejected `TS_AUTHKEY` leaves the private web UI
+unavailable, while the email cron and Eyes initialization can proceed. Tailnet
+setup retries every 30 seconds; each login waits at most 30 seconds. It issues
+no HTTP probes to the app. Replace `TS_AUTHKEY` in Fly and let the secret update
+restart the machine when reauthentication is needed. The application remains
+the entrypoint process, preserving signal delivery and its exit status.
+
+`python3 -B -m unittest discover -s tests -p startup_test.py` exercises rejected
+and blocked login, eventual login/HTTPS recovery, SIGTERM and app exit status
+using local stand-ins. It does not contact Fly, Tailscale, HTTP or SMTP.
