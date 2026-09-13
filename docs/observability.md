@@ -6,12 +6,25 @@ volume, routes, latency, errors, and weekly reading-email outcomes. Fly sets
 Rust build. A boot-stable process identity accompanies the manifest and
 telemetry.
 
-Coverage is passive. The manifest declares no external HTTP monitors and no
-process-availability expectations. Bookworm's web service is exposed through
-Tailscale; recurring probes are unnecessary. Quiet weekdays are normal.
-Continuous process health is not asserted: the current runtime still needs
-worker supervision and HTTP shutdown improvements before reliable heartbeats
-are added.
+Coverage is passive. The manifest declares no external HTTP monitors and allows
+zero `bookworm` instances. Heartbeats come from the running process; stopping or
+sleeping does not create an availability incident. Bookworm's web service is
+exposed through Tailscale; recurring probes are unnecessary. Quiet weekdays
+are normal. Eyes can check the declared cron schedule while a process is known
+to be alive. Silence alone does not prove the app is asleep or broken.
+
+The runtime supervises all enabled workers. A cron/server error, panic or
+unexpected exit cancels its peers and fails the process. SIGTERM/SIGINT stop
+accepting HTTP requests and scheduling new cron ticks, then allow current
+requests and the active cron tick to finish. The drain is bounded to 30 seconds;
+remaining tasks are aborted and awaited on timeout. Process-shutdown reporting
+and telemetry flushing each get up to five seconds afterwards. Fly's configured
+shutdown window is 60 seconds; it does not change idle/autostop behavior.
+An abrupt platform termination can still interrupt work.
+
+Manifest registration is bounded to ten seconds and precedes heartbeats. A
+registration failure logs a warning and lets the app run without heartbeats.
+Disabling both server and cron exits without declaring a live process.
 
 `CRON_DISABLED=true` omits the weekly cron from both the manifest and runtime.
 When enabled, the worker and manifest share `America/New_York`; Eyes receives

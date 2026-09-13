@@ -32,7 +32,19 @@ fn manifest_declares_only_enabled_crons_and_resolves_every_dashboard_card() {
         assert_eq!(manifest.process_instance_id, Some(identity.instance_id()));
         assert_eq!(manifest.process_role.as_deref(), Some("bookworm"));
         assert_eq!(manifest.monitors.as_deref(), Some([].as_slice()));
-        assert!(manifest.expected_process_roles.is_none());
+        let roles = manifest.expected_process_roles.as_ref().unwrap();
+        assert_eq!(roles.len(), 1);
+        assert_eq!(roles[0].role, "bookworm");
+        assert_eq!(roles[0].min_instances, 0);
+        assert!(roles[0].enabled);
+        let heartbeat = eyes_subscriber::ProcessHeartbeatConfig::from_manifest(
+            "http://127.0.0.1".parse().unwrap(),
+            uuid::Uuid::new_v4(),
+            uuid::Uuid::new_v4(),
+            &manifest,
+        )
+        .unwrap();
+        assert_eq!(heartbeat.identity.instance_id(), identity.instance_id());
         assert!(manifest.jobs.is_empty());
         assert_eq!(manifest.crons.len(), usize::from(enabled));
         if enabled {
