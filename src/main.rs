@@ -1,13 +1,20 @@
 use bookworm::{AppState, cron_registry, observability, routes};
 use cja::{
     color_eyre,
-    jobs::CancellationToken,
     setup::{TracingConfig, setup_sentry},
+    tasks::{ShutdownBudget, Supervisor},
 };
 use std::time::Duration;
 use tracing::info;
 
-mod runtime;
+/// Bookworm runs no job worker, so the whole budget is exit grace: time for
+/// in-flight HTTP requests and the active cron tick (the weekly email, sent
+/// directly from the cron worker) to finish. Fly's `kill_timeout` is 60s; 30s
+/// here plus the two 5s telemetry reports below leaves 20s of headroom.
+const SHUTDOWN_BUDGET: ShutdownBudget = ShutdownBudget {
+    job_drain: Duration::ZERO,
+    exit_grace: Duration::from_secs(30),
+};
 
 fn main() -> color_eyre::Result<()> {
     let _sentry_guard = setup_sentry();
@@ -48,13 +55,11 @@ async fn run_services(identity: eyes_subscriber::ProcessIdentity) -> cja::Result
     }
     let manifest = observability::manifest(identity, cron_registry.as_ref())
         .map_err(|error| color_eyre::eyre::eyre!(error))?;
-    let shutdown = CancellationToken::new();
-    let signal_handle = spawn_signal_listener(shutdown.clone())?;
+    // Registers SIGTERM/SIGINT now, so a signal during Eyes registration is not lost.
+    let mut supervisor = Supervisor::new(SHUTDOWN_BUDGET)?;
     let heartbeat = observability::start(&manifest).await;
-    let tasks = spawn_application_tasks(&app_state, server_enabled, cron_registry, &shutdown);
-    let result = tasks.supervise(shutdown, Duration::from_secs(30)).await;
-    signal_handle.abort();
-    let _ = signal_handle.await;
+    spawn_application_tasks(&mut supervisor, &app_state, server_enabled, cron_registry);
+    let result = supervisor.run().await;
     if let Some(heartbeat) = heartbeat
         && let Err(error) = heartbeat.shutdown().await
     {
@@ -63,29 +68,16 @@ async fn run_services(identity: eyes_subscriber::ProcessIdentity) -> cja::Result
     result
 }
 
-fn spawn_signal_listener(shutdown: CancellationToken) -> cja::Result<tokio::task::JoinHandle<()>> {
-    use tokio::signal::unix::{SignalKind, signal};
-    let mut sigterm = signal(SignalKind::terminate())?;
-    let mut sigint = signal(SignalKind::interrupt())?;
-    Ok(tokio::spawn(async move {
-        tokio::select! {
-            _ = sigterm.recv() => info!("Received SIGTERM, initiating graceful shutdown"),
-            _ = sigint.recv() => info!("Received SIGINT, initiating graceful shutdown"),
-        }
-        shutdown.cancel();
-    }))
-}
-
 fn spawn_application_tasks(
+    supervisor: &mut Supervisor,
     app_state: &AppState,
     server_enabled: bool,
     cron_registry: Option<cja::cron::CronRegistry<AppState>>,
-    shutdown: &CancellationToken,
-) -> runtime::ApplicationTasks {
-    let mut tasks = runtime::ApplicationTasks::default();
+) {
+    let shutdown = supervisor.shutdown_token();
     if server_enabled {
         info!("Server Enabled");
-        tasks.spawn(
+        supervisor.spawn(
             "HTTP server",
             cja::server::run_server_until(
                 routes(app_state.clone()),
@@ -97,14 +89,13 @@ fn spawn_application_tasks(
     }
     if let Some(cron_registry) = cron_registry {
         info!("Cron Enabled");
-        tasks.spawn(
+        supervisor.spawn(
             "Cron worker",
-            bookworm::run_cron(app_state.clone(), cron_registry, shutdown.clone()),
+            bookworm::run_cron(app_state.clone(), cron_registry, shutdown),
         );
     } else {
         info!("Cron Disabled");
     }
-    tasks
 }
 
 fn is_feature_enabled(feature: &str) -> bool {
