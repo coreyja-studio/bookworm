@@ -13,11 +13,12 @@ exposed through Tailscale; recurring probes are unnecessary. Quiet weekdays
 are normal. Eyes can check the declared cron schedule while a process is known
 to be alive. Silence alone does not prove the app is asleep or broken.
 
-The runtime supervises all enabled workers. A cron/server error, panic or
+cja's `Supervisor` runs all enabled workers. A cron/server error, panic or
 unexpected exit cancels its peers and fails the process. SIGTERM/SIGINT stop
 accepting HTTP requests and scheduling new cron ticks, then allow current
 requests and the active cron tick to finish. The drain is bounded to 30 seconds;
-remaining tasks are aborted and awaited on timeout. Process-shutdown reporting
+remaining tasks are then aborted and awaited, which logs a warning but still
+counts as a clean signal-initiated exit. Process-shutdown reporting
 and telemetry flushing each get up to five seconds afterwards. Fly's configured
 shutdown window is 60 seconds; it does not change idle/autostop behavior.
 An abrupt platform termination can still interrupt work.
