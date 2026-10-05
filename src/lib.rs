@@ -19,6 +19,10 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 
 pub use cja::Result;
 
+pub mod observability;
+mod weekly_email;
+pub use weekly_email::send_weekly_email;
+
 #[derive(Clone)]
 pub struct AppState {
     db: sqlx::PgPool,
@@ -78,7 +82,7 @@ impl AppState {
 
 impl cja::app_state::AppState for AppState {
     fn version(&self) -> &'static str {
-        "unknown"
+        observability::git_sha().unwrap_or(env!("CARGO_PKG_VERSION"))
     }
 
     fn db(&self) -> &sqlx::PgPool {
@@ -2468,74 +2472,6 @@ pub fn build_weekly_email_html(stats: &WeeklyStats) -> Markup {
     }
 }
 
-pub async fn send_weekly_email(app_state: AppState) -> Result<()> {
-    use lettre::{
-        AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
-        message::{Mailbox, header::ContentType},
-        transport::smtp::authentication::Credentials,
-    };
-
-    let stats = gather_weekly_stats(&app_state.db).await?;
-
-    if stats.total_reads_this_week == 0 {
-        tracing::info!("No reads this week, skipping weekly email");
-        return Ok(());
-    }
-
-    let html = build_weekly_email_html(&stats).into_string();
-
-    let smtp_host = std::env::var("SMTP_HOST").wrap_err("SMTP_HOST must be set")?;
-    let smtp_username = std::env::var("SMTP_USERNAME").wrap_err("SMTP_USERNAME must be set")?;
-    let smtp_password = std::env::var("SMTP_PASSWORD").wrap_err("SMTP_PASSWORD must be set")?;
-    let from_address = std::env::var("SMTP_FROM")
-        .unwrap_or_else(|_| "Bookworm <bookworm@updates.coreyja.com>".to_string());
-    let recipients =
-        std::env::var("WEEKLY_EMAIL_RECIPIENTS").wrap_err("WEEKLY_EMAIL_RECIPIENTS must be set")?;
-
-    let from: Mailbox = from_address.parse().wrap_err("Invalid SMTP_FROM address")?;
-
-    let to_addresses: Vec<Mailbox> = recipients
-        .split(',')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::parse::<Mailbox>)
-        .collect::<std::result::Result<Vec<_>, _>>()
-        .wrap_err("Invalid recipient address in WEEKLY_EMAIL_RECIPIENTS")?;
-
-    let subject = format!(
-        "\u{1f4da} Amelia's Week: {} reads!",
-        stats.total_reads_this_week
-    );
-
-    for to in &to_addresses {
-        let email = Message::builder()
-            .from(from.clone())
-            .to(to.clone())
-            .subject(&subject)
-            .header(ContentType::TEXT_HTML)
-            .body(html.clone())
-            .wrap_err("Failed to build email message")?;
-
-        let creds = Credentials::new(smtp_username.clone(), smtp_password.clone());
-
-        let mailer: AsyncSmtpTransport<Tokio1Executor> =
-            AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&smtp_host)
-                .wrap_err("Failed to create SMTP transport")?
-                .credentials(creds)
-                .build();
-
-        mailer
-            .send(email)
-            .await
-            .wrap_err("Failed to send weekly email via SMTP")?;
-
-        tracing::info!("Weekly email sent to {to}");
-    }
-
-    tracing::info!("All weekly emails sent successfully");
-    Ok(())
-}
-
 // bookworm has no background jobs, but the Eyes boot manifest is generic over a
 // `JobRegistry`. Provide an empty registry so the manifest can report an
 // (empty) job list at startup. The `impl_job_registry!` macro requires at least
@@ -2570,7 +2506,7 @@ pub fn cron_registry() -> cja::cron::CronRegistry<AppState> {
                 Box::pin(async move {
                     send_weekly_email(app_state)
                         .await
-                        .map_err(|e| std::io::Error::other(e.to_string()))
+                        .map_err(|e| std::io::Error::other(format!("{e:#}")))
                 })
             },
         )
@@ -2586,7 +2522,7 @@ pub async fn run_cron(
     cja::cron::Worker::new_with_timezone(
         app_state,
         registry,
-        cja::chrono_tz::US::Eastern,
+        observability::CRON_TIMEZONE,
         std::time::Duration::from_mins(1),
     )
     .run(shutdown_token)

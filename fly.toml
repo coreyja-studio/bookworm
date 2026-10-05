@@ -1,7 +1,12 @@
 app = 'bookworm-coreyja'
 primary_region = 'ewr'
+kill_signal = 'SIGTERM'
+kill_timeout = 60
 
 [build]
+
+[env]
+  EYES_TRANSPORT = 'batching'
 
 [mounts]
   source = 'bookworm_data'

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO reads (book_id, read_date) VALUES ($1, CURRENT_DATE), ($1, CURRENT_DATE), ($1, CURRENT_DATE)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "06b923f0d76254edf412c53c85cc4ac42c6db832ab7e56ed59e754867a459834"
+}
