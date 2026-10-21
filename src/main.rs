@@ -1,7 +1,7 @@
 use bookworm::{AppState, cron_registry, observability, routes};
 use cja::{
     color_eyre,
-    setup::{TracingConfig, setup_sentry},
+    setup::TracingConfig,
     tasks::{ShutdownBudget, Supervisor},
 };
 use std::time::Duration;
@@ -17,7 +17,6 @@ const SHUTDOWN_BUDGET: ShutdownBudget = ShutdownBudget {
 };
 
 fn main() -> color_eyre::Result<()> {
-    let _sentry_guard = setup_sentry();
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(4)
         .enable_all()

@@ -45,7 +45,11 @@ fn manifest_declares_only_enabled_crons_and_resolves_every_dashboard_card() {
         )
         .unwrap();
         assert_eq!(heartbeat.identity.instance_id(), identity.instance_id());
-        assert!(manifest.jobs.is_empty());
+        assert!(
+            manifest.jobs.is_empty(),
+            "unexpected jobs: {:?}",
+            manifest.jobs
+        );
         assert_eq!(manifest.crons.len(), usize::from(enabled));
         if enabled {
             assert_eq!(manifest.crons[0].name, "weekly_reading_email");
