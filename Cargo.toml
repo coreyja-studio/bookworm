@@ -21,7 +21,7 @@ module_name_repetitions = "allow"
 unsafe_code = "forbid"
 
 [dependencies]
-cja = { git = "https://github.com/coreyja/cja", branch = "main" }
+cja = { git = "https://github.com/coreyja/cja", rev = "319274e874cbaed79054012453e3922535ff445e" }
 eyes-subscriber = "0.8.1"
 async-trait = "0.1"
 
