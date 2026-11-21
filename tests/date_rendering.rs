@@ -10,7 +10,16 @@ async fn page(pool: &PgPool, path: &str) -> String {
         .await
         .unwrap();
     assert_eq!(response.status(), 200);
-    String::from_utf8(response.into_body().collect().await.unwrap().to_bytes().to_vec()).unwrap()
+    String::from_utf8(
+        response
+            .into_body()
+            .collect()
+            .await
+            .unwrap()
+            .to_bytes()
+            .to_vec(),
+    )
+    .unwrap()
 }
 
 async fn book(pool: &PgPool, title: &str) -> uuid::Uuid {
@@ -70,14 +79,18 @@ async fn library_uses_latest_read_date_for_value_and_recent_sort(pool: PgPool) {
 #[sqlx::test]
 async fn progress_uses_utc_calendar_countdown(pool: PgPool) {
     async fn days_left(pool: &PgPool) -> i32 {
-        sqlx::query_scalar("SELECT GREATEST(DATE '2030-09-01' - (now() AT TIME ZONE 'UTC')::date, 0)")
-            .fetch_one(pool)
-            .await
-            .unwrap()
+        sqlx::query_scalar(
+            "SELECT GREATEST(DATE '2030-09-01' - (now() AT TIME ZONE 'UTC')::date, 0)",
+        )
+        .fetch_one(pool)
+        .await
+        .unwrap()
     }
     let before = days_left(&pool).await;
     let html = page(&pool, "/progress").await;
     let after = days_left(&pool).await;
     let prefix = &html[..html.find("Days Left").unwrap()];
-    assert!([before, after].iter().any(|days| prefix.ends_with(&format!("{days}</div><div class=\"text-xs text-subtext\">"))));
+    assert!([before, after].iter().any(|days| {
+        prefix.ends_with(&format!("{days}</div><div class=\"text-xs text-subtext\">"))
+    }));
 }

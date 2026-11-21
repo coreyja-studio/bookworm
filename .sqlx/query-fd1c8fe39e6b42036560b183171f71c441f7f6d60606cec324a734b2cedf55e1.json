@@ -6,27 +6,52 @@
       {
         "ordinal": 0,
         "name": "title",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "title"
+          }
+        }
       },
       {
         "ordinal": 1,
         "name": "author",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "author"
+          }
+        }
       },
       {
         "ordinal": 2,
         "name": "isbn",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "isbn"
+          }
+        }
       },
       {
         "ordinal": 3,
         "name": "cover_url",
-        "type_info": "Text"
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "books",
+            "name": "cover_url"
+          }
+        }
       },
       {
         "ordinal": 4,
         "name": "has_cover!",
-        "type_info": "Bool"
+        "type_info": "Bool",
+        "origin": "Expression"
       }
     ],
     "parameters": {

@@ -1,14 +1,22 @@
 //! Passive operational evidence for Bookworm's requests and weekly email.
 use crate::{AppState, Jobs};
-use eyes_subscriber::{
-    AggregateFunction as Agg, AppManifest, DashboardItem as Item, DashboardSection as Section,
-    ExpectedProcessRole, NamedDashboard, NamedMetric, NamedMetricBuilder as Metric,
-    ProcessHeartbeat, ProcessHeartbeatConfig, ProcessHeartbeatHandle, ProcessIdentity,
+use cja::eyes_manifest::{
+    AppManifest, ExpectedProcessRole, ProcessHeartbeat, ProcessHeartbeatConfig,
+    ProcessHeartbeatHandle, ProcessIdentity,
+};
+use cja::observability::{
+    AggregateFunction as Agg, Dashboard, Declarations, Item, Metric, Section,
+    TelemetryMetricBuilder,
 };
 use std::time::Duration;
 
-pub const ROLE: &str = "bookworm";
-pub const CRON_TIMEZONE: cja::chrono_tz::Tz = cja::chrono_tz::America::New_York;
+pub const APP_NAME: &str = "bookworm";
+pub const ROLE: &str = APP_NAME;
+pub const CRON_TIMEZONE_NAME: &str = "America/New_York";
+
+pub fn cron_timezone() -> cja::Result<cja::jiff::tz::TimeZone> {
+    Ok(cja::jiff::tz::TimeZone::get(CRON_TIMEZONE_NAME)?)
+}
 
 #[must_use]
 pub fn git_sha() -> Option<&'static str> {
@@ -25,16 +33,25 @@ pub fn manifest(
         crons,
     );
     for cron in &mut manifest.crons {
-        cron.schedule = format!("CRON_TZ={CRON_TIMEZONE} {}", cron.schedule);
+        // croner normalizes the named Sunday field to 1. Eyes retains the
+        // existing human-readable schedule during the shadow week.
+        if cron.name == "weekly_reading_email" && cron.schedule == "0 0 18 * * 1 *" {
+            cron.schedule = "0 0 18 * * Sun *".into();
+        }
+        cron.schedule = format!("CRON_TZ={CRON_TIMEZONE_NAME} {}", cron.schedule);
     }
     let mut metrics = request_metrics()?;
     metrics.extend(email_metrics()?);
-    Ok(manifest
-        .process(identity)
-        .expected_process_roles(vec![ExpectedProcessRole::new(ROLE).min_instances(0)])
-        .monitors(vec![])
-        .metrics(metrics)
-        .dashboards(vec![dashboard()?]))
+    let declarations = metrics
+        .into_iter()
+        .fold(Declarations::new(), Declarations::metric)
+        .dashboard(dashboard()?);
+    declarations.attach_to_eyes_manifest(
+        manifest
+            .process(identity)
+            .expected_process_roles(vec![ExpectedProcessRole::new(ROLE).min_instances(0)])
+            .monitors(vec![]),
+    )
 }
 
 /// Register before heartbeats. Observability failures never prevent app startup.
@@ -66,13 +83,13 @@ pub async fn start(manifest: &AppManifest) -> Option<ProcessHeartbeatHandle> {
     }
 }
 
-fn count(id: &str, title: &str, path: &str, value: &str) -> Result<Metric, String> {
-    Metric::new(id, Agg::Count, None)?
+fn count(id: &str, title: &str, path: &str, value: &str) -> Result<TelemetryMetricBuilder, String> {
+    TelemetryMetricBuilder::new(id, Agg::Count, None)?
         .display_name(title)
         .filter_eq(path, value)
 }
 
-fn request_metrics() -> Result<Vec<NamedMetric>, String> {
+fn request_metrics() -> Result<Vec<Metric>, String> {
     Ok(vec![
         count("http.requests", "Requests", "semantic_kind", "http.request")?
             .unit("requests")
@@ -86,7 +103,7 @@ fn request_metrics() -> Result<Vec<NamedMetric>, String> {
         .unit("requests")
         .time_bucket(3600)
         .build()?,
-        Metric::new("http.latency.p95", Agg::P95, Some("duration"))?
+        TelemetryMetricBuilder::new("http.latency.p95", Agg::P95, Some("duration"))?
             .filter_eq("semantic_kind", "http.request")?
             .display_name("Request latency · p95")
             .unit("µs")
@@ -110,7 +127,7 @@ fn request_metrics() -> Result<Vec<NamedMetric>, String> {
     ])
 }
 
-fn email_metrics() -> Result<Vec<NamedMetric>, String> {
+fn email_metrics() -> Result<Vec<Metric>, String> {
     let mut metrics = vec![
         count(
             "cron.fires",
@@ -163,8 +180,8 @@ fn email_metrics() -> Result<Vec<NamedMetric>, String> {
     Ok(metrics)
 }
 
-fn dashboard() -> Result<NamedDashboard, String> {
-    Ok(NamedDashboard::new("bookworm-operations", "Bookworm operations")?
+fn dashboard() -> Result<Dashboard, String> {
+    Ok(Dashboard::new("bookworm-operations", "Bookworm operations")?
         .description("Real requests and weekly reading emails. Quiet weekdays are normal. Email runs Sunday at 6 p.m. Eastern; SMTP acceptance does not prove inbox delivery.")
         .default_range_seconds(604_800)
         .section(Section::new().title("At a glance")

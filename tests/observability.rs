@@ -1,5 +1,5 @@
 use bookworm::{cron_registry, observability};
-use eyes_subscriber::ProcessIdentity;
+use cja::eyes_manifest::{ProcessHeartbeatConfig, ProcessIdentity};
 use serde_json::Value;
 use std::collections::BTreeSet;
 
@@ -24,6 +24,12 @@ fn references(value: &Value, ids: &mut Vec<String>) {
 
 #[test]
 fn manifest_declares_only_enabled_crons_and_resolves_every_dashboard_card() {
+    assert_eq!(observability::APP_NAME, "bookworm");
+    assert_eq!(observability::CRON_TIMEZONE_NAME, "America/New_York");
+    assert_eq!(
+        observability::cron_timezone().unwrap().iana_name(),
+        Some("America/New_York")
+    );
     let registry = cron_registry();
     for enabled in [true, false] {
         let identity = ProcessIdentity::new(observability::ROLE);
@@ -37,7 +43,7 @@ fn manifest_declares_only_enabled_crons_and_resolves_every_dashboard_card() {
         assert_eq!(roles[0].role, "bookworm");
         assert_eq!(roles[0].min_instances, 0);
         assert!(roles[0].enabled);
-        let heartbeat = eyes_subscriber::ProcessHeartbeatConfig::from_manifest(
+        let heartbeat = ProcessHeartbeatConfig::from_manifest(
             "http://127.0.0.1".parse().unwrap(),
             uuid::Uuid::new_v4(),
             uuid::Uuid::new_v4(),

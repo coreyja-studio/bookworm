@@ -11,11 +11,11 @@ COPY ts ./ts
 COPY src ./src
 RUN pnpm run build
 
-FROM rust:1.93-bookworm AS builder
+FROM rust:1.99-bookworm AS builder
 
 WORKDIR /app
 
-COPY Cargo.toml Cargo.lock ./
+COPY Cargo.toml Cargo.lock sqlx.toml ./
 COPY .sqlx ./.sqlx
 COPY src ./src
 COPY --from=ts-builder /app/ts/dist ./ts/dist
