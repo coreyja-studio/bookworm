@@ -19,6 +19,40 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 
 pub use cja::Result;
 
+fn utc_today() -> cja::jiff::civil::Date {
+    cja::jiff::Timestamp::now()
+        .to_zoned_datetime(cja::jiff::tz::TimeZone::UTC)
+        .date()
+}
+
+fn kindergarten_days(today: cja::jiff::civil::Date) -> (i64, i64, i64) {
+    let birthday = cja::jiff::civil::Date::new(2025, 1, 18).expect("valid birthday");
+    let start = cja::jiff::civil::Date::new(2030, 9, 1).expect("valid kindergarten date");
+    (
+        i64::from((start - today).get_days()).max(0),
+        i64::from((start - birthday).get_days()),
+        i64::from((today - birthday).get_days()).max(0),
+    )
+}
+
+#[cfg(test)]
+mod date_tests {
+    use super::kindergarten_days;
+    use cja::jiff::civil::Date;
+
+    #[test]
+    fn kindergarten_countdown_bounds() {
+        assert_eq!(
+            kindergarten_days(Date::new(2026, 1, 5).unwrap()),
+            (1700, 2052, 352)
+        );
+        assert_eq!(
+            kindergarten_days(Date::new(2030, 9, 2).unwrap()),
+            (0, 2052, 2053)
+        );
+    }
+}
+
 pub mod observability;
 mod weekly_email;
 pub use weekly_email::send_weekly_email;
@@ -218,7 +252,7 @@ struct LibraryEntry {
     title: String,
     author: String,
     read_count: i64,
-    last_read_date: chrono::NaiveDate,
+    last_read_date: cja::jiff::civil::Date,
     has_cover: bool,
 }
 
@@ -227,7 +261,7 @@ struct ReadEntry {
     book_id: uuid::Uuid,
     title: String,
     author: String,
-    read_date: chrono::NaiveDate,
+    read_date: cja::jiff::civil::Date,
     has_cover: bool,
 }
 
@@ -750,7 +784,7 @@ async fn history(State(state): State<AppState>, Query(params): Query<HistoryPara
     ];
 
     // Group reads by date for visual clarity, tracking a global index for colors
-    let mut grouped: Vec<(chrono::NaiveDate, Vec<(usize, &ReadEntry)>)> = Vec::new();
+    let mut grouped: Vec<(cja::jiff::civil::Date, Vec<(usize, &ReadEntry)>)> = Vec::new();
     for (i, row) in rows.iter().enumerate() {
         if let Some(last) = grouped.last_mut()
             && last.0 == row.read_date
@@ -770,7 +804,7 @@ async fn history(State(state): State<AppState>, Query(params): Query<HistoryPara
             div class="space-y-2" {
                 @for (date, reads) in &grouped {
                     div class="text-subtext text-sm font-bold mt-4 first:mt-0" {
-                        (date.format("%A, %B %-d, %Y"))
+                        (date.strftime("%A, %B %-d, %Y"))
                     }
                     @for (i, row) in reads {
                         @let color = colors[i % colors.len()];
@@ -851,12 +885,7 @@ async fn progress(State(state): State<AppState>, Query(params): Query<ProgressPa
         "unique books"
     };
     let percentage = std::cmp::min((progress_count * 100) / 1000, 100);
-    let amelia_birthday = chrono::NaiveDate::from_ymd_opt(2025, 1, 18).unwrap();
-    let kindergarten_start = chrono::NaiveDate::from_ymd_opt(2030, 9, 1).unwrap();
-    let today = chrono::Utc::now().date_naive();
-    let days_left = (kindergarten_start - today).num_days().max(0);
-    let total_days = (kindergarten_start - amelia_birthday).num_days();
-    let days_elapsed = (today - amelia_birthday).num_days().max(0);
+    let (days_left, total_days, days_elapsed) = kindergarten_days(utc_today());
     let timeline_pct = (days_elapsed as f64 / total_days as f64 * 100.0).min(100.0);
     let remaining = (1000 - progress_count).max(0);
     let months_left = days_left as f64 / 30.44;
@@ -1066,9 +1095,7 @@ async fn stats(State(state): State<AppState>) -> Markup {
         .iter()
         .filter(|(n, _)| tracking_count >= *n)
         .count();
-    let kindergarten_start = chrono::NaiveDate::from_ymd_opt(2030, 9, 1).unwrap();
-    let today = chrono::Utc::now().date_naive();
-    let days_left = (kindergarten_start - today).num_days().max(0);
+    let (days_left, _, _) = kindergarten_days(utc_today());
     let books_remaining = (1000 - tracking_count).max(0);
     let months_left = days_left as f64 / 30.44;
     let books_per_month_needed = if months_left > 0.0 {
@@ -1185,7 +1212,7 @@ struct BookInfo {
 }
 
 struct BookReadDate {
-    read_date: chrono::NaiveDate,
+    read_date: cja::jiff::civil::Date,
 }
 
 #[allow(clippy::too_many_lines)]
@@ -1368,7 +1395,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
             }
             div class="bg-white rounded-xl border border-card-border p-4 text-center" {
                 @if let Some(first) = first_read {
-                    div class="font-heading text-sm font-bold text-accent-green" { (first.format("%b %-d, %Y")) }
+                    div class="font-heading text-sm font-bold text-accent-green" { (first.strftime("%b %-d, %Y")) }
                 } @else {
                     div class="font-heading text-sm font-bold text-subtext" { "—" }
                 }
@@ -1376,7 +1403,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
             }
             div class="bg-white rounded-xl border border-card-border p-4 text-center" {
                 @if let Some(last) = last_read {
-                    div class="font-heading text-sm font-bold text-accent-blue" { (last.format("%b %-d, %Y")) }
+                    div class="font-heading text-sm font-bold text-accent-blue" { (last.strftime("%b %-d, %Y")) }
                 } @else {
                     div class="font-heading text-sm font-bold text-subtext" { "—" }
                 }
@@ -1397,7 +1424,7 @@ async fn book_detail(State(state): State<AppState>, Path(book_id): Path<uuid::Uu
                                 (read_count - i)
                             }
                             div class="flex-1" {
-                                div class="font-bold text-sm" { (read.read_date.format("%B %-d, %Y")) }
+                                div class="font-bold text-sm" { (read.read_date.strftime("%B %-d, %Y")) }
                                 @if i == reads.len() - 1 {
                                     span class="text-xs text-accent-green font-bold" { "First read! ⭐" }
                                 } @else if i == 0 {
@@ -2485,12 +2512,21 @@ impl cja::jobs::registry::JobRegistry<AppState> for Jobs {
         job: &cja::jobs::worker::JobFromDB,
         _app_state: AppState,
         _cancellation_token: cja::jobs::CancellationToken,
+        _slot: cja::jobs::worker::ConcurrencySlot,
     ) -> cja::Result<()> {
         Err(eyre!("Unknown job type: {}", job.name))
     }
 
     fn job_names() -> &'static [&'static str] {
         &[]
+    }
+
+    fn max_runtime(&self, _name: &str) -> std::time::Duration {
+        cja::jobs::DEFAULT_MAX_RUNTIME
+    }
+
+    fn concurrency(&self, _name: &str) -> cja::jobs::Concurrency {
+        cja::jobs::Concurrency::Unlimited
     }
 }
 
@@ -2517,15 +2553,16 @@ pub fn cron_registry() -> cja::cron::CronRegistry<AppState> {
 pub async fn run_cron(
     app_state: AppState,
     registry: cja::cron::CronRegistry<AppState>,
+    timezone: cja::jiff::tz::TimeZone,
     shutdown_token: cja::jobs::CancellationToken,
 ) -> Result<()> {
     cja::cron::Worker::new_with_timezone(
         app_state,
         registry,
-        observability::CRON_TIMEZONE,
+        timezone,
         std::time::Duration::from_mins(1),
     )
     .run(shutdown_token)
-    .await
-    .map_err(|e| eyre!(e))
+    .await;
+    Ok(())
 }

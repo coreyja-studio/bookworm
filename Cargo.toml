@@ -21,8 +21,8 @@ module_name_repetitions = "allow"
 unsafe_code = "forbid"
 
 [dependencies]
-cja = { git = "https://github.com/coreyja/cja", rev = "319274e874cbaed79054012453e3922535ff445e" }
-eyes-subscriber = "0.8.1"
+cja = { git = "https://github.com/coreyja/cja", rev = "53b5154c7c10c86dce0a46689d3f89a793b78c20" }
+eyes-subscriber = "0.10"
 async-trait = "0.1"
 
 axum = { version = "0.8", features = ["multipart"] }
@@ -30,10 +30,11 @@ maud = { version = "0.27", features = ["axum"] }
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 
-sqlx = { version = "0.8", features = [
+sqlx = { version = "0.9", features = [
     "postgres",
-    "runtime-tokio-rustls",
-    "chrono",
+    "runtime-tokio",
+    "tls-rustls",
+    "sqlx-toml",
     "migrate",
     "macros",
     "uuid",
@@ -43,7 +44,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-chrono = { version = "0.4", default-features = false, features = ["serde", "clock"] }
 urlencoding = "2"
 color-eyre = "0.6"
 lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder", "hostname"] }
@@ -56,4 +56,4 @@ tracing-subscriber = { version = "0.3", features = ["json"] }
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 tokio = { version = "1", features = ["full"] }
-sqlx = { version = "0.8", features = ["postgres", "runtime-tokio-rustls"] }
+sqlx = { version = "0.9", features = ["postgres", "runtime-tokio", "tls-rustls", "sqlx-toml"] }
