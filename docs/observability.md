@@ -19,13 +19,22 @@ accepting HTTP requests and scheduling new cron ticks, then allow current
 requests and the active cron tick to finish. The drain is bounded to 30 seconds;
 remaining tasks are then aborted and awaited, which logs a warning but still
 counts as a clean signal-initiated exit. Process-shutdown reporting
-and telemetry flushing each get up to five seconds afterwards. Fly's configured
-shutdown window is 60 seconds; it does not change idle/autostop behavior.
+gets up to five seconds afterwards; the combined Eyes/PostHog telemetry flush
+gets up to three seconds. The 30 + 5 + 3 = 38-second path leaves 22 seconds
+under Fly's configured 60-second shutdown window. It does not change
+idle/autostop behavior.
 An abrupt platform termination can still interrupt work.
 
 Manifest registration is bounded to ten seconds and precedes heartbeats. A
 registration failure logs a warning and lets the app run without heartbeats.
 Disabling both server and cron exits without declaring a live process.
+
+The cron-enabled process also emits one complete `cja_manifest` capture to
+PostHog at boot for Blink. It declares `bookworm`, the Sunday weekly reading
+email cron in `America/New_York`, and no jobs, HTTP monitors, or HogQL checks.
+The cron-disabled server does not emit a partial PostHog snapshot. Without
+`POSTHOG_PROJECT_TOKEN`, there is no PostHog request; Eyes registration and
+heartbeat behavior remain active.
 
 `CRON_DISABLED=true` omits the weekly cron from both the manifest and runtime.
 When enabled, the worker and manifest share `America/New_York`; Eyes receives
